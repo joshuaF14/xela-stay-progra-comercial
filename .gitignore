@@ -13,6 +13,9 @@ frontend/dist/
 frontend/.vite/
 npm-debug.log*
 
+# Herramientas locales
+.github/modernize/
+
 # Editores y sistema operativo
 .idea/
 .vscode/
