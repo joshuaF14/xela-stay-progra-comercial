@@ -22,7 +22,7 @@ El repositorio es todavía un **esqueleto**:
 ## Requisitos
 
 - JDK 21
-- Maven (el proyecto no incluye Maven Wrapper)
+- Maven no es necesario: el backend incluye Maven Wrapper (`mvnw` / `mvnw.cmd`), que descarga la versión fijada en `backend/.mvn/wrapper/maven-wrapper.properties` la primera vez que se ejecuta
 - Node.js LTS y npm
 - Docker (para servicios locales como RabbitMQ, cuando se definan)
 
@@ -41,9 +41,16 @@ Nunca subir credenciales al repositorio.
 
 ### Backend
 
-```bash
+```powershell
+# Windows (PowerShell)
 cd backend
-mvn spring-boot:run
+.\mvnw spring-boot:run
+```
+
+```bash
+# Linux / macOS
+cd backend
+./mvnw spring-boot:run
 ```
 
 Hibernate está en modo `validate`, así que el arranque necesita una base de datos accesible con el esquema ya creado. Flyway está desactivado por defecto; ver [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md) antes de aplicar migraciones.
