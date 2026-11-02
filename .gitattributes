@@ -1,0 +1,24 @@
+# Por defecto: Git detecta si un archivo es texto y lo guarda en el repositorio con LF.
+# En la copia de trabajo cada sistema usa su final de línea habitual.
+* text=auto
+
+# Scripts de shell: siempre LF, también en Windows, para que se ejecuten en Linux, CI y Docker.
+mvnw text eol=lf
+*.sh text eol=lf
+
+# Scripts de Windows: siempre CRLF, que es lo que esperan cmd.exe y PowerShell.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios: sin conversión de finales de línea ni diff de texto.
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.docx binary
+*.zip binary

@@ -26,7 +26,7 @@ spring.config.import=optional:file:../.env[.properties],optional:file:.env[.prop
 - Ambos son `optional:`; si no existen, el arranque continúa con las variables del entorno o los valores por defecto.
 - Las variables de entorno del sistema tienen prioridad sobre el archivo.
 - El archivo se interpreta como `.properties`: sin `export` ni comillas, y `\` debe escaparse.
-- Solo tienen efecto las claves referenciadas como `${DB_URL}`, `${DB_USERNAME}`, `${DB_PASSWORD}` y `${FLYWAY_ENABLED}`. `SPRING_PROFILES_ACTIVE` y `SERVER_PORT` dentro del archivo no se traducen a `spring.profiles.active` ni `server.port`.
+- Solo tienen efecto las claves referenciadas con `${...}` en `application.properties`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `FLYWAY_ENABLED`, `SPRING_PROFILES_ACTIVE`, `SERVER_PORT` y `CORS_ALLOWED_ORIGINS`.
 - En Docker, inyectar las variables con `env_file`/`environment` del servicio en lugar de depender de este archivo.
 
 Tomar host, puerto, base y usuario del diálogo **Connect** de Supabase. Para Flyway, preferir conexión directa (las migraciones son sesiones únicas); si la red solo permite IPv4, usar el pooler en modo sesión. No usar el pooler en modo transacción para Flyway. La conexión directa suele requerir IPv6 o el complemento IPv4; los endpoints del pooler son una alternativa según el modo indicado por Supabase.
@@ -49,7 +49,8 @@ El acceso a los datos es exclusivamente a través del backend Spring; no se expo
 - **`REVOKE ALL ... FROM anon, authenticated`** sobre las 22 tablas y las 2 vistas, para retirar los privilegios que Supabase concede por defecto en `public`.
 - **Vistas con `security_invoker = true`**: aplican los permisos y RLS de quien consulta, no los del propietario, para que no sirvan como atajo para saltarse RLS. Requiere PostgreSQL 15 o superior.
 - `service_role` conserva acceso total (`BYPASSRLS`); su clave nunca debe llegar al frontend ni al repositorio.
-- El `REVOKE` y el RLS solo cubren objetos creados en V1. Cada tabla o vista nueva debe incluir en su migración `ENABLE ROW LEVEL SECURITY` y `REVOKE ALL ... FROM anon, authenticated`.
+- `flyway_schema_history` también queda con RLS y sin privilegios para `anon` y `authenticated` mediante el callback `db/migration/afterMigrate.sql`. Se ejecuta después de cada `migrate`, porque alterar esa tabla dentro de una migración la bloquearía mientras Flyway registra la misma migración.
+- V1 ejecuta `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES/SEQUENCES/FUNCTIONS FROM anon, authenticated`. Aplica a los objetos que cree el rol que migra (`postgres`), así que las tablas de V2, V3… nacen sin acceso para esos roles. Aun así, cada tabla nueva debe incluir `ENABLE ROW LEVEL SECURITY` en su migración. Los objetos creados por otros roles (por ejemplo, desde el Dashboard con `supabase_admin`) no quedan cubiertos.
 
 ## Procedimiento controlado (requiere autorización explícita antes del paso remoto)
 
@@ -61,7 +62,86 @@ El acceso a los datos es exclusivamente a través del backend Spring; no se expo
 6. Solo tras autorización explícita para ese proyecto/entorno, suministrar secretos mediante variables seguras y ejecutar la migración de forma controlada. La configuración de aplicación mantiene Flyway desactivado salvo que `FLYWAY_ENABLED=true` se indique expresamente.
 7. Registrar versión aplicada, resultado y respaldo asociado. No ejecutar `clean`, borrar tablas ni editar migraciones ya aplicadas; cualquier cambio posterior es una nueva migración versionada.
 
-No se ha abierto conexión ni ejecutado una migración en el proyecto Supabase del usuario.
+## Aplicación de V1
+
+**Solo Joshua ejecuta migraciones.** El resto del equipo mantiene `FLYWAY_ENABLED=false` en su `.env` y nunca lo cambia.
+
+### Conexión
+
+- Usar el **Session pooler** (diálogo **Connect** de Supabase): puerto **5432**, usuario `postgres.<project-ref>`, con `sslmode=require` en `DB_URL`.
+- **Nunca usar el Transaction pooler (puerto 6543)** para Flyway. Ese modo reparte las sentencias entre distintas conexiones del servidor, lo que rompe los bloqueos de sesión (advisory locks) de Flyway y las sentencias preparadas.
+- La conexión directa (`db.<project-ref>.supabase.co:5432`) también es válida si la red tiene IPv6.
+
+### Verificación previa (SQL Editor de Supabase)
+
+```sql
+select version();                                              -- PostgreSQL 15 o superior (security_invoker)
+select count(*) from pg_tables where schemaname = 'public';    -- 0: esquema vacío
+select to_regclass('public.flyway_schema_history');            -- null: Flyway nunca se ejecutó
+select has_table_privilege('postgres', 'auth.users', 'REFERENCES'); -- true: FK profiles -> auth.users
+```
+
+### Ejecución única
+
+Se habilita Flyway solo en la sesión de terminal, nunca en `.env`. La variable de entorno tiene prioridad sobre el `.env`:
+
+```powershell
+cd backend
+$env:FLYWAY_ENABLED = "true"
+.\mvnw spring-boot:run
+# Al terminar, haya funcionado o no:
+Remove-Item Env:FLYWAY_ENABLED
+```
+
+Mensaje esperado en el log: `Successfully applied 1 migration to schema "public", now at version v1`. PostgreSQL ejecuta la migración en una transacción, así que un fallo no deja objetos a medias. Ante un error, no reintentar ni ejecutar `repair`, `clean` o `baseline`: primero se analiza la causa.
+
+### Verificación posterior (SQL Editor de Supabase)
+
+```sql
+-- a) Tablas y vistas de public con RLS. Esperado: 23 tablas (22 + flyway_schema_history), todas con rls = true, y 2 vistas.
+select c.relname as objeto,
+       case c.relkind when 'r' then 'tabla' when 'v' then 'vista' end as tipo,
+       c.relrowsecurity as rls
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind in ('r', 'v')
+order by tipo, objeto;
+
+-- b) Privilegios de anon y authenticated en public. Esperado: 0 filas.
+select grantee, table_name, privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public' and grantee in ('anon', 'authenticated');
+
+-- b2) Igual que b), pero leyendo el catálogo directamente. Esperado: 0 filas.
+select c.relname, a.grantee::regrole as grantee, a.privilege_type
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+cross join lateral aclexplode(c.relacl) a
+where n.nspname = 'public' and c.relkind in ('r', 'v')
+  and a.grantee in ('anon'::regrole, 'authenticated'::regrole);
+
+-- c) Historial de Flyway. Esperado: una fila, versión 1 con success = true.
+select version, description, success, installed_on from flyway_schema_history;
+
+-- d) Privilegios por defecto del rol postgres en public. anon y authenticated no deben aparecer en defaclacl.
+select pg_get_userbyid(d.defaclrole) as rol, d.defaclobjtype as tipo, d.defaclacl
+from pg_default_acl d
+join pg_namespace n on n.oid = d.defaclnamespace
+where n.nspname = 'public';
+```
+
+## Registro de migraciones aplicadas
+
+| Fecha | Versión | Entorno | Ejecutó | Resultado |
+|-------|---------|---------|---------|-----------|
+| 2026-11-02 | v1 (`V1__xela_stay_initial_schema.sql`) | Supabase xela-stay (producción del curso), PostgreSQL 17.11, Session pooler | Joshua | Aplicada. Log: `Successfully applied 1 migration to schema "public", now at version v1` (11 s); callback `afterMigrate` ejecutado. |
+
+Verificación posterior de V1 (SQL Editor de Supabase, consultas a–d):
+
+- **a)** Todas las tablas de `public` tienen `rls = true` (22 + `flyway_schema_history`), y están las 2 vistas.
+- **b)** 0 filas. **b2)** 0 filas: `anon` y `authenticated` no tienen privilegios en `public`.
+- **c)** `version = 1`, `"xela stay initial schema"`, `success = true`, `installed_on = 2026-11-02 20:01:44 UTC`.
+- **d)** Las filas de `postgres` no incluyen `anon` ni `authenticated`. Las de `supabase_admin` sí los incluyen (esperado: solo afectan a objetos creados desde el Dashboard).
 
 ## PostgreSQL, Supabase y Flyway
 
@@ -80,4 +160,4 @@ Referencias oficiales: [Flyway PostgreSQL](https://documentation.red-gate.com/fl
 
 ## Operación local
 
-No se ejecutaron comandos de `info`, `validate` ni `migrate` durante esta preparación. El POM integra la API de Flyway con Spring Boot; no se agregó el plugin Maven de Flyway. Antes de aprobar una ejecución remota, el equipo debe acordar un procedimiento de inspección y migración, revisar el destino y habilitar Flyway solo para esa ejecución controlada.
+El POM integra la API de Flyway con Spring Boot; no se agregó el plugin Maven de Flyway. Las migraciones se ejecutan arrancando la aplicación con `FLYWAY_ENABLED=true` solo en la sesión de terminal, según [Aplicación de V1](#aplicación-de-v1).
