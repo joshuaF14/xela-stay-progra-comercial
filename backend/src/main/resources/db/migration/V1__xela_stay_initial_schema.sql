@@ -224,3 +224,12 @@ REVOKE ALL ON
   knowledge_documents, knowledge_chunks, ai_interactions, outbox_events,
   reporting_bookings, reporting_property_ratings
 FROM anon, authenticated;
+
+-- El endurecimiento de flyway_schema_history vive en afterMigrate.sql: alterarla aquí bloquearía
+-- la tabla mientras Flyway registra esta misma migración en ella.
+
+-- Objetos futuros: los privilegios por defecto aplican a los objetos que cree el rol que migra
+-- (postgres). Así V2, V3… nacen sin acceso para anon y authenticated.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon, authenticated;
