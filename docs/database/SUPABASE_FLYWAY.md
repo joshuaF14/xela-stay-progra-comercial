@@ -26,7 +26,7 @@ spring.config.import=optional:file:../.env[.properties],optional:file:.env[.prop
 - Ambos son `optional:`; si no existen, el arranque continúa con las variables del entorno o los valores por defecto.
 - Las variables de entorno del sistema tienen prioridad sobre el archivo.
 - El archivo se interpreta como `.properties`: sin `export` ni comillas, y `\` debe escaparse.
-- Solo tienen efecto las claves referenciadas como `${DB_URL}`, `${DB_USERNAME}`, `${DB_PASSWORD}` y `${FLYWAY_ENABLED}`. `SPRING_PROFILES_ACTIVE` y `SERVER_PORT` dentro del archivo no se traducen a `spring.profiles.active` ni `server.port`.
+- Solo tienen efecto las claves referenciadas con `${...}` en `application.properties`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `FLYWAY_ENABLED`, `SPRING_PROFILES_ACTIVE`, `SERVER_PORT` y `CORS_ALLOWED_ORIGINS`.
 - En Docker, inyectar las variables con `env_file`/`environment` del servicio en lugar de depender de este archivo.
 
 Tomar host, puerto, base y usuario del diálogo **Connect** de Supabase. Para Flyway, preferir conexión directa (las migraciones son sesiones únicas); si la red solo permite IPv4, usar el pooler en modo sesión. No usar el pooler en modo transacción para Flyway. La conexión directa suele requerir IPv6 o el complemento IPv4; los endpoints del pooler son una alternativa según el modo indicado por Supabase.
@@ -61,8 +61,6 @@ El acceso a los datos es exclusivamente a través del backend Spring; no se expo
 5. Probar la migración en un proyecto Supabase desechable con versión PostgreSQL equivalente y revisar `flyway info`/`validate` antes de `migrate`.
 6. Solo tras autorización explícita para ese proyecto/entorno, suministrar secretos mediante variables seguras y ejecutar la migración de forma controlada. La configuración de aplicación mantiene Flyway desactivado salvo que `FLYWAY_ENABLED=true` se indique expresamente.
 7. Registrar versión aplicada, resultado y respaldo asociado. No ejecutar `clean`, borrar tablas ni editar migraciones ya aplicadas; cualquier cambio posterior es una nueva migración versionada.
-
-No se ha abierto conexión ni ejecutado una migración en el proyecto Supabase del usuario.
 
 ## Aplicación de V1
 
@@ -132,6 +130,19 @@ join pg_namespace n on n.oid = d.defaclnamespace
 where n.nspname = 'public';
 ```
 
+## Registro de migraciones aplicadas
+
+| Fecha | Versión | Entorno | Ejecutó | Resultado |
+|-------|---------|---------|---------|-----------|
+| 2026-11-02 | v1 (`V1__xela_stay_initial_schema.sql`) | Supabase xela-stay (producción del curso), PostgreSQL 17.11, Session pooler | Joshua | Aplicada. Log: `Successfully applied 1 migration to schema "public", now at version v1` (11 s); callback `afterMigrate` ejecutado. |
+
+Verificación posterior de V1 (SQL Editor de Supabase, consultas a–d):
+
+- **a)** Todas las tablas de `public` tienen `rls = true` (22 + `flyway_schema_history`), y están las 2 vistas.
+- **b)** 0 filas. **b2)** 0 filas: `anon` y `authenticated` no tienen privilegios en `public`.
+- **c)** `version = 1`, `"xela stay initial schema"`, `success = true`, `installed_on = 2026-11-02 20:01:44 UTC`.
+- **d)** Las filas de `postgres` no incluyen `anon` ni `authenticated`. Las de `supabase_admin` sí los incluyen (esperado: solo afectan a objetos creados desde el Dashboard).
+
 ## PostgreSQL, Supabase y Flyway
 
 Supabase ofrece PostgreSQL estándar con servicios administrados alrededor. Flyway documenta PostgreSQL como base soportada y requiere el módulo `org.flywaydb:flyway-database-postgresql` además del driver JDBC `org.postgresql:postgresql`; Spring Boot ofrece integración con Flyway. El proyecto agrega esos módulos mediante Maven.
@@ -149,4 +160,4 @@ Referencias oficiales: [Flyway PostgreSQL](https://documentation.red-gate.com/fl
 
 ## Operación local
 
-No se ejecutaron comandos de `info`, `validate` ni `migrate` durante esta preparación. El POM integra la API de Flyway con Spring Boot; no se agregó el plugin Maven de Flyway. Antes de aprobar una ejecución remota, el equipo debe acordar un procedimiento de inspección y migración, revisar el destino y habilitar Flyway solo para esa ejecución controlada.
+El POM integra la API de Flyway con Spring Boot; no se agregó el plugin Maven de Flyway. Las migraciones se ejecutan arrancando la aplicación con `FLYWAY_ENABLED=true` solo en la sesión de terminal, según [Aplicación de V1](#aplicación-de-v1).

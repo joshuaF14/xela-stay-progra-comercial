@@ -48,6 +48,12 @@ Mantén la separación entre `backend/`, `frontend/`, `supabase/`, `docs/` e `in
 
 Flyway es el único mecanismo para versionar el esquema. Las migraciones viven en `backend/src/main/resources/db/migration`; no se usa la CLI de Supabase ni el Dashboard para crear tablas. Una migración ya aplicada no se edita: cualquier cambio es una nueva versión. El procedimiento completo (respaldo, verificación previa y autorización) está en [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md).
 
+### Callback `afterMigrate.sql`
+
+`backend/src/main/resources/db/migration/afterMigrate.sql` es un callback de Flyway: se ejecuta al final de **cada** `migrate`, cuando las migraciones ya están confirmadas, y no se registra en `flyway_schema_history` ni tiene checksum. Hoy activa RLS en `flyway_schema_history` y le retira los privilegios a `anon` y `authenticated`. Eso no puede ir dentro de una migración, porque alterar esa tabla la bloquearía mientras Flyway registra la propia migración.
+
+Regla: `afterMigrate.sql` **solo puede contener sentencias de permisos repetibles** (`ENABLE ROW LEVEL SECURITY`, `GRANT`, `REVOKE`), que dan el mismo resultado sin importar cuántas veces se ejecuten. Nunca se agregan ahí `CREATE`, `ALTER` de columnas, `DROP`, `INSERT`, `UPDATE`, `DELETE` ni cambios de esquema o de datos: esos van en una migración versionada (V2, V3…).
+
 ## Flujo de ramas
 
 ```text
