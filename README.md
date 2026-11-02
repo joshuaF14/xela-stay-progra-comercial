@@ -6,7 +6,8 @@ Plataforma de reservas de alojamientos con mapas, chat, reseñas, IA y procesami
 
 El repositorio es todavía un **esqueleto**:
 
-- Backend: clase principal de Spring Boot, configuración de datos y la migración inicial `V1` (no aplicada en Supabase). Aún no incluye `spring-boot-starter-web`, por lo que no expone endpoints.
+- Base de datos: migración `V1` aplicada en Supabase el 2026-11-02 (ver [registro](docs/database/SUPABASE_FLYWAY.md#registro-de-migraciones-aplicadas)).
+- Backend: API base con `GET /api/health`, `/actuator/health`, manejo global de errores, CORS y seguridad stateless. Los módulos de negocio son paquetes vacíos.
 - Frontend: proyecto Vite + React mínimo.
 - `docker-compose.yml` sin servicios definidos; RabbitMQ pendiente.
 - Decisiones abiertas en [docs/decisions/PENDIENTES.md](docs/decisions/PENDIENTES.md).
@@ -33,7 +34,7 @@ La lista de variables está en [.env.example](.env.example). Para desarrollo loc
 1. Copiar `.env.example` como `.env` en la raíz del repositorio (está ignorado por Git).
 2. Completar los valores reales de Supabase. Mantener `FLYWAY_ENABLED=false`.
 
-El backend lee ese archivo mediante `spring.config.import` (desde la raíz o desde `backend/`). Las variables de entorno del sistema tienen prioridad. El `.env` se interpreta como archivo `.properties`: sin `export` ni comillas. `SPRING_PROFILES_ACTIVE` y `SERVER_PORT` solo tienen efecto si se definen como variables de entorno reales. Vite no lee el `.env` de la raíz; usa `frontend/.env` para `VITE_API_URL`.
+El backend lee ese archivo mediante `spring.config.import` (desde la raíz o desde `backend/`). Las variables de entorno del sistema tienen prioridad. El `.env` se interpreta como archivo `.properties`: sin `export` ni comillas. `SPRING_PROFILES_ACTIVE` (por defecto `local`), `SERVER_PORT` (por defecto `8080`) y `CORS_ALLOWED_ORIGINS` (por defecto `http://localhost:5173`) se leen desde el `.env` o el entorno. Vite no lee el `.env` de la raíz; usa `frontend/.env` para `VITE_API_URL`.
 
 Nunca subir credenciales al repositorio.
 
@@ -54,6 +55,15 @@ cd backend
 ```
 
 Hibernate está en modo `validate`, así que el arranque necesita una base de datos accesible con el esquema ya creado. Flyway está desactivado por defecto; ver [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md) antes de aplicar migraciones.
+
+Comprobación: `http://localhost:8080/api/health` y `http://localhost:8080/actuator/health` (el componente `db` debe estar `UP`).
+
+Pruebas (perfil `test`, sin base de datos):
+
+```powershell
+cd backend
+.\mvnw test
+```
 
 ### Frontend
 
