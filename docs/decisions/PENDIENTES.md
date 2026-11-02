@@ -33,4 +33,5 @@ El "área" indica a quién corresponde según la distribución de [AGENTS.md](..
 | 13 | Crear el usuario dedicado para Flyway y confirmar que es propietario de los objetos de aplicación. | Joshua |
 | 14 | Rol con el que se conecta el backend: propietario de las tablas o rol con `BYPASSRLS` (con RLS sin políticas, otro rol no ve filas). | Joshua |
 | 15 | Rol de solo lectura para Power BI: por `security_invoker`, necesita políticas `SELECT` o `BYPASSRLS` para leer las vistas `reporting_*`. | Joshua / Giovanni |
-| 16 | Tablas futuras: incluir `ENABLE ROW LEVEL SECURITY` y `REVOKE` en cada migración, o configurar `ALTER DEFAULT PRIVILEGES`. | Joshua |
+| 16 | ~~Tablas futuras: `ALTER DEFAULT PRIVILEGES`.~~ Resuelto en V1 para objetos creados por `postgres`; cada tabla nueva sigue necesitando `ENABLE ROW LEVEL SECURITY` en su migración. | Joshua |
+| 17 | Firma de JWT de Supabase: confirmar que el proyecto usa llaves asimétricas (JWKS). Si usa el secreto heredado HS256, decidir entre migrar a llaves asimétricas (recomendado) o soportar HS256 en el backend. Ver [AUTENTICACION.md](../architecture/AUTENTICACION.md). | Joshua |
