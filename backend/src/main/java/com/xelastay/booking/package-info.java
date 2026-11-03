@@ -3,6 +3,7 @@
  * <p>
  * Responsable: Giovanni.
  * <p>
- * Sin implementación: el contrato del módulo debe documentarse en docs/api/ antes de programarlo.
+ * Los datos de properties (precio, capacidad, dueño) se leen con SQL nativo en {@link com.xelastay.booking.PropertyReader},
+ * sin la entidad Property. Cada cambio de estado de una reserva escribe su evento en el outbox (módulo events).
  */
 package com.xelastay.booking;

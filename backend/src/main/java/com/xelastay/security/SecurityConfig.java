@@ -35,6 +35,8 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health", "/actuator/health", "/actuator/health/**")
                         .permitAll()
+                        // Calendario público de un alojamiento (módulo de reservas).
+                        .requestMatchers(HttpMethod.GET, "/api/v1/properties/*/availability").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(oauth2 -> oauth2
