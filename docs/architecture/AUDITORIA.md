@@ -91,6 +91,9 @@ cambio en el módulo de reservas. `AiLogWriter` conserva su firma y sus valores 
 }
 ```
 
+**Verificado en Supabase (2026-11-03):** aparecieron registros `AMENITY_CREATED`, `BOOKING_CREATED` y `AI_CHAT`;
+las columnas `ip_address` (`inet`) y `old_values`/`new_values` (`jsonb`) se escriben correctamente.
+
 Verificación rápida en el SQL Editor:
 
 ```sql
