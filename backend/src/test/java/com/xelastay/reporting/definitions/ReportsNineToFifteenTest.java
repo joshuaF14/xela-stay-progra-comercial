@@ -84,7 +84,7 @@ class ReportsNineToFifteenTest {
                 row(WHEN, "Casa B", "Luis", LocalDate.of(2026, 11, 5), LocalDate.of(2026, 11, 6), "Rechazada",
                         "Anfitrión", "Sin motivo", new BigDecimal("250.00")),
                 row(WHEN, "Casa A", "Eva", LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 2), "Cancelada",
-                        "Sin registro", "Sin motivo", null)));
+                        "Sistema (venció)", "Venció: el anfitrión no respondió a tiempo", null)));
 
         ReportTable table = new CancellationsReport(queries).generate(OCTOBER);
 
@@ -92,7 +92,8 @@ class ReportsNineToFifteenTest {
         assertThat(table.rows()).hasSize(3);
         assertThat(summary(table, "Cancelaciones")).isEqualTo(2L);
         assertThat(summary(table, "Rechazos")).isEqualTo(1L);
-        assertThat(summary(table, "Sin motivo registrado")).isEqualTo(2L);
+        assertThat(summary(table, "Vencidas sin respuesta del anfitrión")).isEqualTo(1L);
+        assertThat(summary(table, "Sin motivo registrado")).isEqualTo(1L);
         assertThat(summary(table, "Monto de las reservas afectadas")).isEqualTo(new BigDecimal("750.00"));
     }
 

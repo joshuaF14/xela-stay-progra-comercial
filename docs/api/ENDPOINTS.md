@@ -554,8 +554,9 @@ Reportes 1 al 8: los agrega Joshua con el mismo mecanismo.
 
 Notas de cálculo:
 
-- 9: "Quién" sale del último registro `BOOKING_CANCELLED` o `BOOKING_REJECTED` de `audit_logs` (huésped, anfitrión,
-  administrador o "Sin registro"); "Sin motivo" cuando `cancellation_reason` está vacío.
+- 9: "Quién" sale del último registro `BOOKING_CANCELLED`, `BOOKING_REJECTED` o `BOOKING_EXPIRED` de `audit_logs`
+  (huésped, anfitrión, administrador, "Sistema (venció)" o "Sin registro"); "Sin motivo" cuando
+  `cancellation_reason` está vacío.
 - 10: noches = `check_out - check_in`; anticipación = `check_in` menos el día (hora de Guatemala) en que se creó.
 - 12: una respuesta es un mensaje del anfitrión cuyo mensaje anterior en la conversación fue del huésped; el tiempo
   se mide entre ambos, aunque el mensaje del huésped sea de antes del periodo.
