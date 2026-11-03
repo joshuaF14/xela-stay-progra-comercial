@@ -7,8 +7,6 @@ interface ReportDefinition {
     id: string;
     name: string;
     description?: string;
-    format?: 'xlsx' | 'pdf';
-    hasDateFilter?: boolean;
 }
 
 export default function Reports() {
@@ -22,19 +20,17 @@ export default function Reports() {
     const [downloading, setDownloading] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    // 1. Validar rol de ADMIN
+    // Validar rol de ADMIN desde /api/v1/me
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (!session) {
-                setIsAdmin(false);
-                return;
-            }
-            const role = session.user.user_metadata?.role || session.user.app_metadata?.role;
-            setIsAdmin(role === 'ADMIN');
-        });
+        apiFetch<any>('/api/v1/me')
+            .then((me) => {
+                const roles = Array.isArray(me?.roles) ? me.roles : [];
+                setIsAdmin(roles.includes('ADMIN') || me?.role === 'ADMIN');
+            })
+            .catch(() => setIsAdmin(false));
     }, []);
 
-    // 2. Cargar catálogo de reportes de Gio
+    // Cargar lista de reportes
     useEffect(() => {
         if (!isAdmin) return;
 
@@ -47,7 +43,6 @@ export default function Reports() {
             .catch((err: any) => setErrorMsg(err.message || 'Error al cargar lista de reportes.'));
     }, [isAdmin]);
 
-    // 3. Consultar datos para renderizar la tabla
     const handleQueryData = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedReportId) return;
@@ -59,10 +54,8 @@ export default function Reports() {
         if (startDate) queryParams.append('start', startDate);
         if (endDate) queryParams.append('end', endDate);
 
-        const url = `/api/v1/reports/${selectedReportId}?${queryParams.toString()}`;
-
         try {
-            const data: any = await apiFetch(url);
+            const data: any = await apiFetch(`/api/v1/reports/${selectedReportId}?${queryParams.toString()}`);
             const rows = Array.isArray(data) ? data : data?.content || [];
             setReportData(rows);
         } catch (err: any) {
@@ -73,7 +66,6 @@ export default function Reports() {
         }
     };
 
-    // 4. Descarga segura mediante Blob con Bearer Token
     const handleDownload = async (fileExtension: 'xlsx' | 'pdf' = 'xlsx') => {
         if (!selectedReportId) return;
 
@@ -95,16 +87,11 @@ export default function Reports() {
 
             const response = await fetch(endpoint, {
                 method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
+                headers: { Authorization: `Bearer ${token}` },
             });
 
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: no se pudo generar el archivo.`);
-            }
+            if (!response.ok) throw new Error(`Error ${response.status}: no se pudo generar el archivo.`);
 
-            // Convertir respuesta a Blob y generar descarga en memoria
             const blob = await response.blob();
             const blobUrl = window.URL.createObjectURL(blob);
             const tempLink = document.createElement('a');
@@ -115,7 +102,7 @@ export default function Reports() {
             document.body.removeChild(tempLink);
             window.URL.revokeObjectURL(blobUrl);
         } catch (err: any) {
-            setErrorMsg(err.message || 'Error al descargar el archivo del reporte.');
+            setErrorMsg(err.message || 'Error al descargar el archivo.');
         } finally {
             setDownloading(false);
         }
@@ -123,7 +110,7 @@ export default function Reports() {
 
     if (isAdmin === false) {
         return (
-            <div className="max-w-md mx-auto p-12 text-center bg-white border border-[#E8E2D8] rounded-3xl space-y-4">
+            <div className="max-w-md mx-auto p-12 text-center bg-white border border-[#E8E2D8] rounded-3xl space-y-4 shadow-sm animate-fadeIn">
                 <ShieldAlert className="w-12 h-12 text-[#E05A47] mx-auto" />
                 <h2 className="text-xl font-serif font-bold text-[#1E1C1A]">Acceso Restringido</h2>
                 <p className="text-xs text-[#736E65]">
@@ -134,16 +121,14 @@ export default function Reports() {
     }
 
     if (isAdmin === null) {
-        return <div className="p-12 text-center text-xs text-[#736E65]">Verificando permisos de acceso...</div>;
+        return <div className="p-12 text-center text-xs text-[#736E65]">Verificando permisos...</div>;
     }
 
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-16 animate-fadeIn">
             <div className="border-b border-[#E8E2D8] pb-4">
                 <h1 className="text-3xl font-serif font-bold text-[#1E1C1A]">Reportes del Sistema</h1>
-                <p className="text-xs text-[#736E65] mt-1">
-                    Exportación y visualización auditada de datos transaccionales para administración y Power BI
-                </p>
+                <p className="text-xs text-[#736E65] mt-1">Exportación y visualización auditada para administración y Power BI</p>
             </div>
 
             {errorMsg && (
@@ -153,7 +138,6 @@ export default function Reports() {
                 </div>
             )}
 
-            {/* Selector de Reporte y Filtros */}
             <form onSubmit={handleQueryData} className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -215,8 +199,7 @@ export default function Reports() {
                             onClick={() => handleDownload('xlsx')}
                             className="bg-[#3A833A] hover:bg-[#2F6D2F] text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50"
                         >
-                            <Download className="w-3.5 h-3.5" />
-                            Descargar .XLSX
+                            <Download className="w-3.5 h-3.5" /> Descargar .XLSX
                         </button>
                         <button
                             type="button"
@@ -224,14 +207,13 @@ export default function Reports() {
                             onClick={() => handleDownload('pdf')}
                             className="bg-[#E05A47] hover:bg-[#C84937] text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50"
                         >
-                            <Download className="w-3.5 h-3.5" />
-                            Descargar .PDF
+                            <Download className="w-3.5 h-3.5" /> Descargar .PDF
                         </button>
                     </div>
                 </div>
             </form>
 
-            {/* Renderizado de Tabla Dinámica */}
+            {/* Resultados tabulares */}
             <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm overflow-hidden">
                 <h3 className="font-serif font-bold text-base text-[#1E1C1A] mb-4 flex items-center gap-2">
                     <Table className="w-4 h-4 text-[#E05A47]" /> Resultados del Reporte
@@ -239,16 +221,16 @@ export default function Reports() {
 
                 {reportData.length === 0 ? (
                     <p className="text-xs text-[#736E65] text-center py-8">
-                        Selecciona los filtros y presiona "Visualizar Tabla" para consultar la información.
+                        Selecciona los filtros y haz clic en "Visualizar Tabla" para ver la información.
                     </p>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="border-b border-[#E8E2D8] bg-[#FAF7F2]">
-                                    {Object.keys(reportData[0]).map((header) => (
-                                        <th key={header} className="p-3 text-[11px] font-bold text-[#1E1C1A] uppercase tracking-wider">
-                                            {header}
+                                    {Object.keys(reportData[0]).map((h) => (
+                                        <th key={h} className="p-3 text-[11px] font-bold text-[#1E1C1A] uppercase tracking-wider">
+                                            {h}
                                         </th>
                                     ))}
                                 </tr>
