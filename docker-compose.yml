@@ -1,5 +1,7 @@
 # Servicios locales de Xela Stay. Docker Compose lee las variables del .env de la raíz del repo.
-# Uso: docker compose up -d rabbitmq
+# Solo RabbitMQ:                         docker compose up -d rabbitmq
+# Todo (RabbitMQ + backend + frontend):  docker compose --profile full up -d --build
+#   Backend: http://localhost:8080   Frontend: http://localhost:5173   Consola RabbitMQ: http://localhost:15672
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -17,6 +19,39 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  # Perfil "full": backend con la imagen de backend/Dockerfile (la misma que usa Render), contra Supabase.
+  backend:
+    profiles: ["full"]
+    build: ./backend
+    env_file: .env
+    environment:
+      # Dentro de la red de Compose, RabbitMQ se llama "rabbitmq" y escucha en 5672 sin TLS.
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_VHOST: /
+      RABBITMQ_SSL: "false"
+      SERVER_PORT: "8080"
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+    ports:
+      - "8080:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # Perfil "full": frontend compilado y servido por nginx. Las VITE_* salen del .env de la raíz.
+  frontend:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
 
 volumes:
   rabbitmq-data:

@@ -40,6 +40,20 @@ class ProdProfileConfigTest {
         assertThat(rabbit.determineVirtualHost()).isEqualTo("vhost1");
     }
 
+    /** application.properties fija ssl.enabled=${RABBITMQ_SSL:false} y vhost "/": la URL amqps debe ganar. */
+    @Test
+    void amqpsUrlWinsOverTheBaseSslAndVhostDefaults() {
+        RabbitProperties rabbit = new RabbitProperties();
+        rabbit.getSsl().setEnabled(false);
+        rabbit.setVirtualHost("/");
+        rabbit.setPort(5672);
+        rabbit.setAddresses(List.of("amqps://usuario:clave@puffin.rmq2.cloudamqp.com/vhost1"));
+
+        assertThat(rabbit.getSsl().determineEnabled()).isTrue();
+        assertThat(rabbit.determinePort()).isEqualTo(5671);
+        assertThat(rabbit.determineVirtualHost()).isEqualTo("vhost1");
+    }
+
     @Test
     void emptyRabbitUrlFallsBackToHostAndPort() {
         RabbitProperties rabbit = new RabbitProperties();
