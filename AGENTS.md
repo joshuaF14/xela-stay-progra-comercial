@@ -35,7 +35,7 @@ docs/
   architecture/                  Autenticación, auditoría, eventos y acceso a datos
   database/                      Procedimiento y registro de migraciones
   decisions/                     Decisiones abiertas (PENDIENTES.md)
-  deploy/                        Despliegue en Render (DESPLIEGUE.md)
+  technical-manual/              Manual técnico: índice (README.md), despliegue (DESPLIEGUE.md) y módulos
   ai/                            Base de conocimiento del agente
 infra/rabbitmq/                  Configuración de RabbitMQ
 docker-compose.yml               RabbitMQ local; perfil "full" con API y frontend
@@ -115,7 +115,7 @@ versionada (V3, V4…).
 
 Render despliega desde `main` según [render.yaml](render.yaml): la API con `backend/Dockerfile` y el perfil `prod`
 ([application-prod.properties](backend/src/main/resources/application-prod.properties)), y el frontend como Static
-Site. Guía completa: [docs/deploy/DESPLIEGUE.md](docs/deploy/DESPLIEGUE.md).
+Site. Guía completa: [docs/technical-manual/DESPLIEGUE.md](docs/technical-manual/DESPLIEGUE.md).
 
 - **Flyway nunca corre en producción**: el perfil `prod` fija `spring.flyway.enabled=false` (sin variable) y
   `FLYWAY_ENABLED=false` en Render. Las migraciones se aplican a mano según la regla de migraciones de arriba. No

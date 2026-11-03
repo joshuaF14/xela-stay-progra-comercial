@@ -94,7 +94,7 @@ Write-Host ''
 $results | Format-Table -AutoSize
 $failed = @($results | Where-Object { $_.Resultado -eq 'FALLA' }).Count
 if ($failed -gt 0) {
-    Write-Host "$failed prueba(s) fallaron. Ver docs/deploy/DESPLIEGUE.md, sección Problemas comunes." -ForegroundColor Red
+    Write-Host "$failed prueba(s) fallaron. Ver docs/technical-manual/DESPLIEGUE.md, sección Problemas comunes." -ForegroundColor Red
     exit 1
 }
 Write-Host 'Todo OK.' -ForegroundColor Green

@@ -19,7 +19,7 @@ procesamiento asíncrono de reservas. Proyecto final de Programación Comercial.
 | IA | Agente RAG con Gemini y búsqueda de texto completo en español. |
 | Auditoría | Operaciones clave en `audit_logs` y consulta para ADMIN ([AUDITORIA.md](docs/architecture/AUDITORIA.md)). |
 | Frontend | React + Vite con catálogo, mapa, detalle, reservas, panel de anfitrión e inicio de sesión con Supabase. |
-| **Producción** | **Desplegado en Render**: frontend https://xela-stay-web.onrender.com y API https://xela-stay-api.onrender.com ([DESPLIEGUE.md](docs/deploy/DESPLIEGUE.md)). |
+| **Producción** | **Desplegado en Render**: frontend https://xela-stay-web.onrender.com y API https://xela-stay-api.onrender.com ([DESPLIEGUE.md](docs/technical-manual/DESPLIEGUE.md)). |
 
 Decisiones abiertas: [docs/decisions/PENDIENTES.md](docs/decisions/PENDIENTES.md).
 
@@ -137,7 +137,7 @@ push y PR hacia `develop` y `main`.
   frontend con nginx): `docker compose --profile full up -d --build`.
 
 Guía paso a paso (Render, Supabase, CloudAMQP, logs, despertar la API y carga de la IA):
-[docs/deploy/DESPLIEGUE.md](docs/deploy/DESPLIEGUE.md).
+[docs/technical-manual/DESPLIEGUE.md](docs/technical-manual/DESPLIEGUE.md).
 
 ## Documentación
 
@@ -152,6 +152,6 @@ Guía paso a paso (Render, Supabase, CloudAMQP, logs, despertar la API y carga d
 | [docs/architecture/EVENTOS.md](docs/architecture/EVENTOS.md) | Outbox, RabbitMQ y notificaciones |
 | [docs/architecture/DATABASE_ARCHITECTURE.md](docs/architecture/DATABASE_ARCHITECTURE.md) | Arquitectura de acceso a datos |
 | [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md) | Procedimiento y registro de migraciones |
-| [docs/deploy/DESPLIEGUE.md](docs/deploy/DESPLIEGUE.md) | Despliegue en Render, Supabase y CloudAMQP; verificación |
+| [docs/technical-manual/DESPLIEGUE.md](docs/technical-manual/DESPLIEGUE.md) | Despliegue en Render, Supabase y CloudAMQP; verificación |
 | [docs/ai/README.md](docs/ai/README.md) | Base de conocimiento del agente de IA |
 | [docs/decisions/PENDIENTES.md](docs/decisions/PENDIENTES.md) | Decisiones abiertas |
