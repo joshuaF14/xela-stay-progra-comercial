@@ -38,7 +38,7 @@ Servicio de negocio ──(misma transacción)──> AuditService.record(...) �
 | `USER` | Un usuario actúa sobre lo suyo (su perfil, sus alojamientos, sus pagos, sus reservas) o un HOST crea una ubicación. |
 | `ADMIN` | Un ADMIN actúa sobre algo ajeno o compartido (perfiles de otros, roles, catálogo, alojamientos de otros, reembolsos). |
 | `AI` | Interacciones del agente (`AI_CHAT`). |
-| `SYSTEM` | Reservado para tareas internas (por ejemplo, la expiración de reservas `PENDING`). |
+| `SYSTEM` | Tareas internas sin usuario (`actor_id` nulo): hoy, el vencimiento de reservas `PENDING` (`BOOKING_EXPIRED`). |
 
 ## Operaciones registradas
 
@@ -55,7 +55,7 @@ Servicio de negocio ──(misma transacción)──> AuditService.record(...) �
 | `property` | `PROPERTY_CREATED`, `PROPERTY_UPDATED`, `PROPERTY_STATUS_CHANGED`, `PROPERTY_DELETED`, `PROPERTY_AMENITIES_REPLACED` | campos de negocio, `{status}`, `{deletedAt}` o `{amenityIds}` |
 | `property_image` | `PROPERTY_IMAGE_ADDED`, `PROPERTY_IMAGE_UPDATED`, `PROPERTY_IMAGE_DELETED` | `propertyId`, `imageUrl`, `caption`, `displayOrder`, `cover` |
 | `payment` | `PAYMENT_CREATED`, `PAYMENT_REFUNDED` | pago creado; `{status}` antes/después |
-| `booking` | `BOOKING_CREATED`, `BOOKING_CONFIRMED`, `BOOKING_REJECTED`, `BOOKING_CANCELLED`, `BOOKING_COMPLETED` | `{status, cancellationReason}` |
+| `booking` | `BOOKING_CREATED`, `BOOKING_CONFIRMED`, `BOOKING_REJECTED`, `BOOKING_CANCELLED`, `BOOKING_COMPLETED`, `BOOKING_EXPIRED` (`source = SYSTEM`) | `{status, cancellationReason}` |
 | `knowledge_document` | `AI_DOCUMENT_INGESTED` | título, tipo y cantidad de fragmentos (`source = ADMIN`) |
 | `ai_interaction` | `AI_CHAT` | pregunta y cantidad de fuentes (`source = AI`) |
 

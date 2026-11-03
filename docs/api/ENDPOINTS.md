@@ -325,8 +325,15 @@ Estados: `PENDING` → `CONFIRMED` → `COMPLETED`, o bien `REJECTED` / `CANCELL
 | `reject` | anfitrión | `PENDING` |
 | `cancel` | huésped o anfitrión, con motivo | `PENDING`, `CONFIRMED` |
 | `complete` | anfitrión | `CONFIRMED` |
+| vencimiento | sistema, cada 15 minutos | `PENDING` |
 
 Cada creación y cada transición escribe un evento en el outbox (ver [EVENTOS.md](../architecture/EVENTOS.md)).
+
+**Vencimiento.** Una reserva `PENDING` que el anfitrión no confirma ni rechaza vence a las 24 horas de creada o al
+llegar el día de entrada, lo que pase primero. Queda `CANCELLED` con `cancellationReason = "Venció: el anfitrión no
+respondió a tiempo"`, huésped y anfitrión reciben la notificación de cancelación y en `audit_logs` queda
+`BOOKING_EXPIRED` con `source = SYSTEM`. Se configura con `BOOKING_PENDING_HOURS` (por defecto 24) y se apaga con
+`BOOKING_EXPIRATION_ENABLED=false`.
 
 | Método | Ruta | Quién | Respuesta |
 |---|---|---|---|
