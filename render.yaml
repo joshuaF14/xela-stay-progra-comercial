@@ -1,0 +1,87 @@
+# Blueprint de Render para Xela Stay (https://render.com/docs/blueprint-spec).
+# Se despliega desde main. Las variables con "sync: false" son secretas: Render las pide al crear el Blueprint y
+# nunca se guardan en este archivo. Guía paso a paso: docs/deploy/DESPLIEGUE.md
+
+services:
+  # --- API Spring Boot (Docker) ------------------------------------------------------------------------------------
+  - type: web
+    name: xela-stay-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon                 # misma región que Supabase (us-west-2)
+    branch: main
+    autoDeployTrigger: commit
+    # /api/health no depende de base de datos, RabbitMQ ni Gemini: evita reinicios en bucle si alguno falla.
+    healthCheckPath: /api/health
+    buildFilter:
+      paths:
+        - backend/**
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: FLYWAY_ENABLED
+        value: "false"
+      # Supabase PostgreSQL por el Session pooler (puerto 5432).
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_POOL_SIZE
+        value: "5"
+      # Supabase Auth (no son secretos: dependen del proyecto).
+      - key: SUPABASE_JWKS_URI
+        value: https://hnflawvzlrttdkbseahe.supabase.co/auth/v1/.well-known/jwks.json
+      - key: SUPABASE_JWT_ISSUER
+        value: https://hnflawvzlrttdkbseahe.supabase.co/auth/v1
+      # URL pública del frontend. Si Render asigna otra (p. ej. con sufijo), corregirla aquí o en el panel.
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://xela-stay-web.onrender.com
+      # CloudAMQP: amqps://usuario:clave@host/vhost (incluye la contraseña).
+      - key: RABBITMQ_URL
+        sync: false
+      - key: EVENTS_ENABLED
+        value: "true"
+      # Agente de IA (Gemini).
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gemini-3.8-flash
+
+  # --- Frontend React (sitio estático en el CDN de Render) ---------------------------------------------------------
+  - type: web
+    name: xela-stay-web
+    runtime: static
+    branch: main
+    autoDeployTrigger: commit
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    buildFilter:
+      paths:
+        - frontend/**
+    # React Router: toda ruta que no sea un archivo existente devuelve index.html (recargar /login, /properties/…).
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # Los assets llevan hash en el nombre: caché larga.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    # Vite incrusta estas variables al compilar (cambiarlas requiere un nuevo deploy del sitio).
+    envVars:
+      # Misma versión que el CI.
+      - key: NODE_VERSION
+        value: "24"
+      # URL pública de la API. Si Render asigna otra, corregirla aquí o en el panel.
+      - key: VITE_API_URL
+        value: https://xela-stay-api.onrender.com
+      - key: VITE_SUPABASE_URL
+        value: https://hnflawvzlrttdkbseahe.supabase.co
+      # Publishable/anon key (pública por diseño, pero se carga en el panel para no versionarla).
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
