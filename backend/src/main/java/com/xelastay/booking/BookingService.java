@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.xelastay.audit.AuditService;
+import com.xelastay.audit.AuditSource;
 import com.xelastay.booking.dto.BookingResponse;
 import com.xelastay.booking.dto.BookingResult;
 import com.xelastay.booking.dto.CreateBookingRequest;
@@ -166,6 +167,28 @@ public class BookingService {
         return BookingResponse.from(booking, property);
     }
 
+    /**
+     * Vence una reserva {@code PENDING} que el anfitrión no respondió a tiempo (la llama
+     * {@link PendingBookingExpirer}). Queda {@code CANCELLED} con el motivo dado, sale como evento de cancelación
+     * (huésped y anfitrión reciben la notificación) y se audita como {@code BOOKING_EXPIRED} con
+     * {@code source = SYSTEM}.
+     *
+     * @return false si ya no estaba pendiente (el anfitrión respondió mientras tanto) y no se tocó
+     */
+    @Transactional
+    public boolean expire(UUID bookingId, String reason) {
+        Booking booking = lock(bookingId);
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            return false;
+        }
+        PropertyInfo property = propertyOf(booking);
+        booking.cancel(reason);
+        enqueue(booking, property, "EXPIRED", EventTypes.BOOKING_CANCELLED);
+        audit.record(null, "BOOKING_EXPIRED", "booking", booking.getId(),
+                Map.of("status", BookingStatus.PENDING.name()), state(booking), AuditSource.SYSTEM);
+        return true;
+    }
+
     @Transactional(readOnly = true)
     public BookingResponse get(UUID userId, UUID bookingId) {
         Booking booking = bookings.findById(bookingId)
@@ -221,16 +244,24 @@ public class BookingService {
     }
 
     private void publish(Booking booking, PropertyInfo property, String action, String eventType) {
+        enqueue(booking, property, action, eventType);
+        // Auditoría de cada transición (crear, confirmar, rechazar, cancelar, completar), en la misma transacción.
+        audit.recordUserAction("BOOKING_" + action, "booking", booking.getId(), null, state(booking));
+    }
+
+    private void enqueue(Booking booking, PropertyInfo property, String action, String eventType) {
         BookingEventPayload payload = new BookingEventPayload(booking.getId(), booking.getPropertyId(),
                 property.title(), booking.getGuestId(), property.hostId(), booking.getCheckIn(),
                 booking.getCheckOut(), booking.getStatus().name(), booking.getCancellationReason());
         outbox.enqueue(OutboxService.eventKey(EventTypes.BOOKING_AGGREGATE, booking.getId(), action),
                 EventTypes.BOOKING_AGGREGATE, booking.getId(), eventType, payload);
-        // Auditoría de cada transición (crear, confirmar, rechazar, cancelar, completar), en la misma transacción.
+    }
+
+    private static Map<String, Object> state(Booking booking) {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("status", booking.getStatus().name());
         state.put("cancellationReason", booking.getCancellationReason());
-        audit.recordUserAction("BOOKING_" + action, "booking", booking.getId(), null, state);
+        return state;
     }
 
     private static void requireHost(PropertyInfo property, UUID userId, String message) {

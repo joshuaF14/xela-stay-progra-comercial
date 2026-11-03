@@ -20,11 +20,14 @@ public class CancellationsReport implements ReportDefinition {
     static final String CANCELLED = "Cancelada";
     static final String REJECTED = "Rechazada";
     static final String NO_REASON = "Sin motivo";
+    /** Valor de la columna "Quién" para las reservas que venció la tarea programada (BOOKING_EXPIRED). */
+    static final String EXPIRED_BY = "Sistema (venció)";
 
     private static final String SQL = """
             SELECT b.updated_at, p.title, g.full_name, b.check_in, b.check_out,
                    CASE b.status WHEN 'CANCELLED' THEN 'Cancelada' ELSE 'Rechazada' END,
-                   CASE WHEN a.actor_id IS NULL THEN 'Sin registro'
+                   CASE WHEN a.action = 'BOOKING_EXPIRED' THEN 'Sistema (venció)'
+                        WHEN a.actor_id IS NULL THEN 'Sin registro'
                         WHEN a.actor_id = b.guest_id THEN 'Huésped'
                         WHEN a.actor_id = p.host_id THEN 'Anfitrión'
                         ELSE 'Administrador' END,
@@ -34,9 +37,9 @@ public class CancellationsReport implements ReportDefinition {
             JOIN properties p ON p.id = b.property_id
             LEFT JOIN profiles g ON g.id = b.guest_id
             LEFT JOIN LATERAL (
-                SELECT al.actor_id FROM audit_logs al
+                SELECT al.action, al.actor_id FROM audit_logs al
                 WHERE al.entity_type = 'booking' AND al.entity_id = b.id
-                  AND al.action IN ('BOOKING_CANCELLED', 'BOOKING_REJECTED')
+                  AND al.action IN ('BOOKING_CANCELLED', 'BOOKING_REJECTED', 'BOOKING_EXPIRED')
                 ORDER BY al.created_at DESC
                 LIMIT 1
             ) a ON TRUE
@@ -68,7 +71,7 @@ public class CancellationsReport implements ReportDefinition {
     @Override
     public String description() {
         return "Reservas que pasaron a canceladas o rechazadas en el periodo (según su última actualización), "
-                + "con quién lo hizo y el motivo registrado.";
+                + "con quién lo hizo (incluye las que vencieron sin respuesta del anfitrión) y el motivo registrado.";
     }
 
     @Override
@@ -76,6 +79,7 @@ public class CancellationsReport implements ReportDefinition {
         List<List<Object>> rows = queries.rows(SQL, NativeQueries.period(period));
         long cancelled = rows.stream().filter(row -> CANCELLED.equals(row.get(5))).count();
         long rejected = rows.stream().filter(row -> REJECTED.equals(row.get(5))).count();
+        long expired = rows.stream().filter(row -> EXPIRED_BY.equals(row.get(6))).count();
         long withoutReason = rows.stream().filter(row -> NO_REASON.equals(row.get(7))).count();
         BigDecimal amount = rows.stream()
                 .map(row -> ReportValues.toDecimal(row.get(8)))
@@ -96,6 +100,7 @@ public class CancellationsReport implements ReportDefinition {
                 List.of(
                         new ReportSummary("Cancelaciones", cancelled),
                         new ReportSummary("Rechazos", rejected),
+                        new ReportSummary("Vencidas sin respuesta del anfitrión", expired),
                         new ReportSummary("Sin motivo registrado", withoutReason),
                         new ReportSummary("Monto de las reservas afectadas", amount)));
     }

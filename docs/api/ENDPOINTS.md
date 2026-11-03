@@ -326,8 +326,15 @@ Estados: `PENDING` → `CONFIRMED` → `COMPLETED`, o bien `REJECTED` / `CANCELL
 | `reject` | anfitrión | `PENDING` |
 | `cancel` | huésped o anfitrión, con motivo | `PENDING`, `CONFIRMED` |
 | `complete` | anfitrión | `CONFIRMED` |
+| vencimiento | sistema, cada 15 minutos | `PENDING` |
 
 Cada creación y cada transición escribe un evento en el outbox (ver [EVENTOS.md](../architecture/EVENTOS.md)).
+
+**Vencimiento.** Una reserva `PENDING` que el anfitrión no confirma ni rechaza vence a las 24 horas de creada o al
+llegar el día de entrada, lo que pase primero. Queda `CANCELLED` con `cancellationReason = "Venció: el anfitrión no
+respondió a tiempo"`, huésped y anfitrión reciben la notificación de cancelación y en `audit_logs` queda
+`BOOKING_EXPIRED` con `source = SYSTEM`. Se configura con `BOOKING_PENDING_HOURS` (por defecto 24) y se apaga con
+`BOOKING_EXPIRATION_ENABLED=false`.
 
 | Método | Ruta | Quién | Respuesta |
 |---|---|---|---|
@@ -554,8 +561,9 @@ Reportes 1 al 8: los agrega Joshua con el mismo mecanismo.
 
 Notas de cálculo:
 
-- 9: "Quién" sale del último registro `BOOKING_CANCELLED` o `BOOKING_REJECTED` de `audit_logs` (huésped, anfitrión,
-  administrador o "Sin registro"); "Sin motivo" cuando `cancellation_reason` está vacío.
+- 9: "Quién" sale del último registro `BOOKING_CANCELLED`, `BOOKING_REJECTED` o `BOOKING_EXPIRED` de `audit_logs`
+  (huésped, anfitrión, administrador, "Sistema (venció)" o "Sin registro"); "Sin motivo" cuando
+  `cancellation_reason` está vacío.
 - 10: noches = `check_out - check_in`; anticipación = `check_in` menos el día (hora de Guatemala) en que se creó.
 - 12: una respuesta es un mensaje del anfitrión cuyo mensaje anterior en la conversación fue del huésped; el tiempo
   se mide entre ambos, aunque el mensaje del huésped sea de antes del periodo.
