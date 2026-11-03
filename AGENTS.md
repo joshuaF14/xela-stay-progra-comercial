@@ -5,8 +5,9 @@
 Xela Stay es una plataforma de reservas de alojamientos en Quetzaltenango con mapas, chat, reseñas, pagos simulados,
 IA (RAG) y procesamiento asíncrono de reservas. Es el proyecto final del curso Programación Comercial.
 
-Estado: backend funcional con todos los módulos (ver la tabla de módulos), migraciones V1 y V2 aplicadas en Supabase y
-frontend conectado a la API. Contratos en [docs/api/ENDPOINTS.md](docs/api/ENDPOINTS.md).
+Estado: backend funcional con todos los módulos (ver la tabla de módulos), migraciones V1 y V2 aplicadas en Supabase,
+frontend conectado a la API y **desplegado en Render** (https://xela-stay-web.onrender.com y
+https://xela-stay-api.onrender.com). Contratos en [docs/api/ENDPOINTS.md](docs/api/ENDPOINTS.md).
 
 ## Stack fijo (no cambiar)
 
@@ -21,20 +22,23 @@ frontend conectado a la API. Contratos en [docs/api/ENDPOINTS.md](docs/api/ENDPO
 
 ```text
 backend/                         API Spring Boot (paquete com.xelastay, un paquete por módulo)
+  Dockerfile                     Imagen de producción (Render)
   src/main/resources/
-    application*.properties      Configuración (local y test); lee el .env de la raíz
+    application*.properties      Configuración (base, local, test y prod); lee el .env de la raíz
     db/migration/                Migraciones Flyway (V1, V2…) y callback afterMigrate.sql
-frontend/                        App React + TypeScript + Vite (lee frontend/.env)
-scripts/                         seed-demo.ps1: datos de demostración vía API
+frontend/                        App React + TypeScript + Vite (lee frontend/.env); Dockerfile + nginx opcional
+scripts/                         seed-demo.ps1 (datos de demostración) y smoke-prod.ps1 (verificación de producción)
+render.yaml                      Blueprint de Render: API (Docker) y frontend (Static Site)
 supabase/migrations/             Sin uso para el esquema (ver su README.md)
 docs/
   api/                           ENDPOINTS.md y CONVENCIONES.md
   architecture/                  Autenticación, auditoría, eventos y acceso a datos
   database/                      Procedimiento y registro de migraciones
   decisions/                     Decisiones abiertas (PENDIENTES.md)
+  deploy/                        Despliegue en Render (DESPLIEGUE.md)
   ai/                            Base de conocimiento del agente
 infra/rabbitmq/                  Configuración de RabbitMQ
-docker-compose.yml               RabbitMQ local
+docker-compose.yml               RabbitMQ local; perfil "full" con API y frontend
 .github/workflows/ci.yml         CI: backend (mvnw verify) y frontend (npm ci + build)
 .env.example                     Plantilla de variables sin valores reales
 CONTRIBUTING.md                  Flujo de PR, commits y migraciones
@@ -57,6 +61,7 @@ arquitectura, API, datos y operación en su carpeta correspondiente.
 | `events`, `notification` | Outbox, RabbitMQ y notificaciones | Giovanni |
 | `review`, `messaging` | Reseñas y chat | Giovanni |
 | `ai` | Agente RAG | Giovanni |
+| `reporting` | Reportes y exportación (Excel y PDF) | Giovanni |
 
 Convenciones de código y API: [docs/api/CONVENCIONES.md](docs/api/CONVENCIONES.md). Entidades JPA idénticas a V1
 (Hibernate en `validate`), DTO como records, validación con `jakarta.validation`, usuario siempre desde `CurrentUser`,
@@ -105,6 +110,23 @@ Regla: `afterMigrate.sql` **solo puede contener sentencias de permisos repetible
 `GRANT`, `REVOKE`), que dan el mismo resultado sin importar cuántas veces se ejecuten. Nunca se agregan ahí `CREATE`,
 `ALTER` de columnas, `DROP`, `INSERT`, `UPDATE`, `DELETE` ni cambios de esquema o de datos: esos van en una migración
 versionada (V3, V4…).
+
+## Despliegue (producción)
+
+Render despliega desde `main` según [render.yaml](render.yaml): la API con `backend/Dockerfile` y el perfil `prod`
+([application-prod.properties](backend/src/main/resources/application-prod.properties)), y el frontend como Static
+Site. Guía completa: [docs/deploy/DESPLIEGUE.md](docs/deploy/DESPLIEGUE.md).
+
+- **Flyway nunca corre en producción**: el perfil `prod` fija `spring.flyway.enabled=false` (sin variable) y
+  `FLYWAY_ENABLED=false` en Render. Las migraciones se aplican a mano según la regla de migraciones de arriba. No
+  agregar ninguna forma de migrar al arrancar la API.
+- Ningún secreto en `render.yaml`: las variables sensibles van con `sync: false` y se cargan en el panel de Render.
+- El health check de Render es `/api/health`, que no depende de la base, RabbitMQ ni Gemini. No cambiarlo a
+  `/actuator/health` (se pone `DOWN` si RabbitMQ falla y Render reiniciaría la API en bucle).
+- Las variables `VITE_*` se incrustan al compilar: cambiarlas exige un nuevo deploy del Static Site.
+- Plan Free: 512 MB y 0.1 CPU; la API arranca en ~106 s tras dormirse. No subir la memoria de la JVM ni el pool
+  (`DB_POOL_SIZE=5`) sin revisar el límite de 15 conexiones del pooler.
+- Verificación: `scripts/smoke-prod.ps1 -ApiUrl … -WebUrl …`.
 
 ## Flujo de ramas
 
