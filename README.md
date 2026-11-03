@@ -20,6 +20,7 @@ procesamiento asíncrono de reservas. Proyecto final de Programación Comercial.
 | Auditoría | Operaciones clave en `audit_logs` y consulta para ADMIN ([AUDITORIA.md](docs/architecture/AUDITORIA.md)). |
 | Reportes y Power BI | 15 reportes para ADMIN con exportación a Excel y PDF ([ENDPOINTS.md](docs/api/ENDPOINTS.md#reportes)); tablero de Power BI sobre el esquema `bi` ([POWER-BI.md](docs/technical-manual/POWER-BI.md)). |
 | Frontend | React + Vite con catálogo, mapa, detalle, reservas, panel de anfitrión e inicio de sesión con Supabase. |
+| **Producción** | **Desplegado en Render**: frontend https://xela-stay-web.onrender.com y API https://xela-stay-api.onrender.com ([DESPLIEGUE.md](docs/technical-manual/DESPLIEGUE.md)). |
 
 Decisiones abiertas: [docs/decisions/PENDIENTES.md](docs/decisions/PENDIENTES.md).
 
@@ -121,6 +122,34 @@ cd backend
 
 El CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ejecuta `./mvnw -B verify` y compila el frontend en cada
 push y PR hacia `develop` y `main`.
+
+## Despliegue
+
+| Servicio | Plataforma | URL |
+|---|---|---|
+| Frontend | Render Static Site (CDN) | https://xela-stay-web.onrender.com |
+| API | Render Web Service con Docker (`backend/Dockerfile`), plan Free | https://xela-stay-api.onrender.com |
+| Base de datos y Auth | Supabase (Session pooler) | — |
+| RabbitMQ | CloudAMQP | — |
+
+- La infraestructura está en [render.yaml](render.yaml) (Blueprint). Se despliega solo al fusionar en `main`
+  (`develop` → PR → `main`). Los secretos se cargan en el panel de Render, nunca en el repositorio.
+- La API usa el perfil `prod` ([application-prod.properties](backend/src/main/resources/application-prod.properties)):
+  Flyway apagado, pool pequeño, CloudAMQP por `RABBITMQ_URL`, proxy de Render y Actuator sin detalles.
+- **Plan Free**: la API se apaga tras 15 minutos sin uso y tarda **~106 s** en arrancar. Antes de una demostración,
+  abrir `https://xela-stay-api.onrender.com/api/health` 2-3 minutos antes.
+- Verificación sin credenciales:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\smoke-prod.ps1 `
+    -ApiUrl https://xela-stay-api.onrender.com -WebUrl https://xela-stay-web.onrender.com
+  ```
+
+- Imagen local de la API: `cd backend; docker build -t xela-stay-api .`. Todo junto en local (RabbitMQ, API y
+  frontend con nginx): `docker compose --profile full up -d --build`.
+
+Guía paso a paso (Render, Supabase, CloudAMQP, logs, despertar la API y carga de la IA):
+[docs/technical-manual/DESPLIEGUE.md](docs/technical-manual/DESPLIEGUE.md).
 
 ## Documentación
 
