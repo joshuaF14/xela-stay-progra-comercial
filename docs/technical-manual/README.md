@@ -15,5 +15,5 @@ suya.
 | 8 | Base de conocimiento del agente de IA | [docs/ai](../ai/README.md) |
 | 9 | Despliegue en producción (Render, Supabase, CloudAMQP) y verificación | [DESPLIEGUE](DESPLIEGUE.md), [render.yaml](../../render.yaml) y [smoke-prod.ps1](../../scripts/smoke-prod.ps1) |
 | 10 | Frontend | Pendiente |
-| 11 | Reportes y Power BI | Pendiente |
+| 11 | Reportes y Power BI | [POWER-BI](POWER-BI.md) (reportes 1 a 15: [ENDPOINTS](../api/ENDPOINTS.md#reportes)) |
 | 12 | Decisiones abiertas | [PENDIENTES](../decisions/PENDIENTES.md) |

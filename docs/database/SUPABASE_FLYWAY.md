@@ -136,6 +136,7 @@ where n.nspname = 'public';
 |-------|---------|---------|---------|-----------|
 | 2026-11-02 | v1 (`V1__xela_stay_initial_schema.sql`) | Supabase xela-stay (producción del curso), PostgreSQL 17.11, Session pooler | Joshua | Aplicada. Log: `Successfully applied 1 migration to schema "public", now at version v1` (11 s); callback `afterMigrate` ejecutado. |
 | 2026-11-02 | v2 (`V2__seed_roles_y_catalogo.sql`) | Supabase xela-stay (producción del curso), PostgreSQL 17.11, Session pooler | Joshua | Aplicada (hora exacta en `flyway_schema_history.installed_on`). Un arranque posterior con Flyway activo validó 2 migraciones (`Schema "public" is up to date`) y Hibernate validó las entidades de perfiles y roles. Datos verificados por Joshua: roles GUEST, HOST y ADMIN; 5 categorías; 8 amenidades. |
+| 2026-11-03 | v3 (`V3__bi_vistas_y_rol_powerbi.sql`) | Supabase xela-stay (producción del curso), PostgreSQL 17.11, Session pooler | Joshua | Aplicada. Log: `Successfully applied 1 migration to schema "public", now at version v3` (2.8 s); callback `afterMigrate` ejecutado. Verificado (solo lectura): 10 vistas en `bi`; `powerbi_reader` con `SELECT` en las 10, sin escritura y sin acceso a ninguna tabla de `public`; `anon` y `authenticated` sin acceso a `bi`; rol `NOLOGIN`, límite de 3 conexiones. |
 
 Verificación posterior de V1 (SQL Editor de Supabase, consultas a–d):
 

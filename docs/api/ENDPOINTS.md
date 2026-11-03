@@ -549,6 +549,14 @@ Tipos de columna: `TEXT`, `INTEGER`, `DECIMAL`, `PERCENT` (de 0 a 100), `DATE` (
 
 | # | `id` | Reporte | Fuente | Filtro del periodo |
 |---|---|---|---|---|
+| 1 | `ingresos-por-mes` | Ingresos por mes: pagos aprobados, monto aprobado, reembolsado y neto | `bi.ingresos_por_mes` | meses que se cruzan con el periodo (mes de aprobación del pago) |
+| 2 | `reservas-por-estado` | Reservas por estado: reservas, noches y monto, y % confirmadas o completadas | `bi.reservas_por_estado` | meses (mes de entrada) |
+| 3 | `ocupacion-por-alojamiento` | Ocupación por alojamiento (%): noches reservadas sobre días del periodo | `bi.ocupacion_por_alojamiento`, `bi.dim_alojamientos` | días exactos (noche reservada) |
+| 4 | `alojamientos-por-categoria` | Alojamientos por categoría y municipio, con precio promedio por noche | `bi.alojamientos_por_categoria_municipio` | ninguno (estado actual) |
+| 5 | `mejor-calificados` | Alojamientos mejor calificados: reseñas y promedio | `bi.alojamientos_mejor_calificados` | días (fecha de la reseña) |
+| 6 | `ingresos-por-anfitrion` | Ingresos por anfitrión: alojamientos, reservas y monto aprobado | `bi.ingresos_por_anfitrion` | meses (mes de entrada) |
+| 7 | `usuarios-por-mes-y-rol` | Usuarios registrados por mes y rol | `bi.usuarios_por_mes_y_rol` | meses (mes de registro) |
+| 8 | `pagos-por-metodo` | Pagos por método y estado, con % de aprobación | `bi.pagos_por_metodo_estado` | meses (mes de creación) |
 | 9 | `cancellations` | Cancelaciones y rechazos, con motivo y quién lo hizo | `bookings`, `audit_logs` | `bookings.updated_at` |
 | 10 | `stay-duration` | Noches promedio por estancia y días de anticipación, por alojamiento | `bookings` `CONFIRMED`/`COMPLETED` | `bookings.created_at` |
 | 11 | `ratings-distribution` | Reseñas de 1 a 5 estrellas y promedio por alojamiento | `reviews` | `reviews.created_at` |
@@ -557,9 +565,20 @@ Tipos de columna: `TEXT`, `INTEGER`, `DECIMAL`, `PERCENT` (de 0 a 100), `DATE` (
 | 14 | `ai-usage` | Preguntas al agente y documentos más citados | `ai_interactions.sources`, `knowledge_documents` | `ai_interactions.created_at` |
 | 15 | `audit-activity` | Operaciones por acción, entidad, origen y usuario | `audit_logs` | `audit_logs.created_at` |
 
-Reportes 1 al 8: los agrega Joshua con el mismo mecanismo.
+Los reportes 1 a 8 leen solo las vistas del esquema `bi` (V3), las mismas que usa Power BI
+([POWER-BI.md](../technical-manual/POWER-BI.md)); ninguna expone datos personales. Las vistas mensuales se filtran por
+los meses que se cruzan con el periodo (parámetros `:fromMonth`, primer día del mes inicial, y `:end`); las diarias,
+por `:start` y `:end`. La columna "Mes" se muestra como `AAAA-MM`.
 
 Notas de cálculo:
+
+- 1: un pago reembolsado cuenta como aprobado y como reembolsado en el mes en que se aprobó (V1 no guarda la fecha
+  del reembolso); neto = pagos que siguen aprobados.
+- 3: incluye los alojamientos vigentes sin noches reservadas (0 %); ocupación = noches reservadas en el periodo /
+  días del periodo; el resumen promedia los porcentajes.
+- 4: precio promedio general ponderado por la cantidad de alojamientos de cada grupo.
+- 6 y 7: el monto del reporte 6 es por mes de entrada de la reserva (no por mes de pago, como el 1); en el 7 un
+  usuario con varios roles cuenta una vez en cada uno.
 
 - 9: "Quién" sale del último registro `BOOKING_CANCELLED`, `BOOKING_REJECTED` o `BOOKING_EXPIRED` de `audit_logs`
   (huésped, anfitrión, administrador, "Sistema (venció)" o "Sin registro"); "Sin motivo" cuando
@@ -574,7 +593,8 @@ Notas de cálculo:
 1. Crear en `com.xelastay.reporting.definitions` un `@Component` que implemente `ReportDefinition` con `number()`,
    `id()` (minúsculas y guiones, único), `title()`, `description()` y `generate(ReportPeriod)`.
 2. Consultar con `NativeQueries.rows(sql, NativeQueries.period(period))`: parámetros `:from` (incluido) y `:to`
-   (excluido), y casts con `CAST(x AS tipo)`, no con `::`.
+   (excluido), y casts con `CAST(x AS tipo)`, no con `::`. Sobre las vistas de `bi`, usar los parámetros de fecha de
+   `BiReportSupport` (ejemplo: `ReportsOneToEightTest`).
 3. Devolver un `ReportTable` con las columnas (`ReportColumn.text/integer/decimal/percent/date/dateTime`), una fila
    por resultado (un valor por columna) y el resumen.
 4. Probarlo con `NativeQueries` simulado (ejemplo: `ReportsNineToFifteenTest`). El endpoint y la exportación no
