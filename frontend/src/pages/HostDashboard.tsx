@@ -20,13 +20,11 @@ export default function HostDashboard() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
-    // Catálogos dinámicos
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [amenitiesList, setAmenitiesList] = useState<AmenityItem[]>([]);
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
     const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
-    // Campos del formulario
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [pricePerNight, setPricePerNight] = useState('');
@@ -39,27 +37,17 @@ export default function HostDashboard() {
     const [longitude, setLongitude] = useState('');
     const [imageUrl, setImageUrl] = useState('');
 
-    // 1. Cargar categorías y amenidades desde los endpoints reales
     useEffect(() => {
-        // Cargar categorías
+        // Consumir únicamente el endpoint oficial de categorías
         apiFetch<any>('/api/v1/property-categories')
             .then((data) => {
                 const list = Array.isArray(data) ? data : data?.content || [];
                 setCategories(list);
                 if (list.length > 0) setSelectedCategoryId(list[0].id);
             })
-            .catch(() => {
-                // Fallback a categories si el backend usa el nombre corto
-                apiFetch<any>('/api/v1/categories')
-                    .then((data) => {
-                        const list = Array.isArray(data) ? data : data?.content || [];
-                        setCategories(list);
-                        if (list.length > 0) setSelectedCategoryId(list[0].id);
-                    })
-                    .catch(() => setCategories([]));
-            });
+            .catch(() => setCategories([]));
 
-        // Cargar amenidades
+        // Cargar amenidades disponibles
         apiFetch<any>('/api/v1/amenities')
             .then((data) => {
                 const list = Array.isArray(data) ? data : data?.content || [];
@@ -94,14 +82,14 @@ export default function HostDashboard() {
         setLoading(true);
 
         try {
-            // PASO 1: Habilitar rol de anfitrión al usuario actual
+            // 1. Promover usuario a rol HOST
             try {
                 await apiFetch('/api/v1/me/host', { method: 'POST' });
-            } catch (err: any) {
-                // Si ya es anfitrión, continúa sin fallar
+            } catch {
+                // Continuar si ya contaba con el rol
             }
 
-            // PASO 2: Crear la propiedad con categoryId real
+            // 2. Crear propiedad con categoryId real
             const propertyPayload = {
                 title: title.trim(),
                 description: description.trim(),
@@ -126,9 +114,9 @@ export default function HostDashboard() {
             });
 
             const propertyId = createdProperty?.id || createdProperty?.propertyId;
-            if (!propertyId) throw new Error('No se recibió el identificador de la propiedad creada.');
+            if (!propertyId) throw new Error('No se recibió el ID de la propiedad creada.');
 
-            // PASO 3: Asociar imagen de portada
+            // 3. Registrar imagen de portada
             if (imageUrl.trim()) {
                 await apiFetch(`/api/v1/properties/${propertyId}/images`, {
                     method: 'POST',
@@ -139,7 +127,7 @@ export default function HostDashboard() {
                 });
             }
 
-            // PASO 4: Asociar amenidades seleccionadas
+            // 4. Asociar amenidades
             if (selectedAmenities.length > 0) {
                 await apiFetch(`/api/v1/properties/${propertyId}/amenities`, {
                     method: 'PUT',
@@ -147,13 +135,13 @@ export default function HostDashboard() {
                 });
             }
 
-            // PASO 5: Publicar la propiedad (de DRAFT a PUBLISHED)
+            // 5. Publicar propiedad
             await apiFetch(`/api/v1/properties/${propertyId}/status`, {
                 method: 'PATCH',
                 body: JSON.stringify({ status: 'PUBLISHED' }),
             });
 
-            // Confirmar éxito solo tras completar los 5 pasos
+            // Confirmar éxito tras completar los 5 pasos
             setSuccess(true);
             setTitle('');
             setDescription('');
@@ -172,7 +160,7 @@ export default function HostDashboard() {
                 navigate('/');
             }, 1500);
         } catch (err: any) {
-            setErrorMsg(err.message || 'Error durante la secuencia de publicación del alojamiento.');
+            setErrorMsg(err.message || 'Error durante la secuencia de publicación.');
         } finally {
             setLoading(false);
         }
@@ -309,7 +297,7 @@ export default function HostDashboard() {
                     </div>
                 </div>
 
-                {/* 3. Amenidades Disponibles */}
+                {/* 3. Amenidades */}
                 {amenitiesList.length > 0 && (
                     <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                         <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
@@ -337,7 +325,7 @@ export default function HostDashboard() {
                     </div>
                 )}
 
-                {/* 4. Ubicación y Coordenadas */}
+                {/* 4. Ubicación */}
                 <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                     <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-[#E05A47]" /> 4. Ubicación y Coordenadas
@@ -387,7 +375,7 @@ export default function HostDashboard() {
                     </div>
                 </div>
 
-                {/* 5. Fotografía de Portada */}
+                {/* 5. Fotografía */}
                 <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                     <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
                         <Image className="w-4 h-4 text-[#E05A47]" /> 5. Fotografía de Portada

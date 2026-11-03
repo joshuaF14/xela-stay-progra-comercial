@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabase';
+import { apiFetch } from '../api/client';
 import { Compass, CalendarDays, Home, FileBarChart, LogIn, LogOut, User } from 'lucide-react';
 
 export default function Navbar() {
@@ -10,46 +11,56 @@ export default function Navbar() {
     const [sessionUser, setSessionUser] = useState<any>(null);
     const [isAdmin, setIsAdmin] = useState(false);
 
-    // 1. Escuchar sesión activa y determinar si es ADMIN
     useEffect(() => {
-        // Verificar sesión inicial
+        // 1. Obtener sesión activa de Supabase
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSessionUser(session?.user ?? null);
-            checkAdminRole(session?.user);
+            if (session) {
+                fetchUserRole();
+            } else {
+                setIsAdmin(false);
+            }
         });
 
-        // Escuchar cambios de inicio/cierre de sesión en tiempo real
+        // 2. Escuchar cambios de sesión
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSessionUser(session?.user ?? null);
-            checkAdminRole(session?.user);
+            if (session) {
+                fetchUserRole();
+            } else {
+                setIsAdmin(false);
+            }
         });
 
         return () => subscription.unsubscribe();
     }, []);
 
-    const checkAdminRole = (user: any) => {
-        if (!user) {
+    // Consultar el perfil real del usuario en la base de datos interna
+    const fetchUserRole = async () => {
+        try {
+            const me: any = await apiFetch('/api/v1/me');
+            // Revisa si 'roles' es un arreglo que incluye "ADMIN", o si el campo 'role' es "ADMIN"
+            const rolesArray: string[] = Array.isArray(me?.roles) ? me.roles : [];
+            const hasAdmin = rolesArray.includes('ADMIN') || me?.role === 'ADMIN';
+            setIsAdmin(hasAdmin);
+        } catch {
             setIsAdmin(false);
-            return;
         }
-        // Revisa en user_metadata o app_metadata según cómo guarde Supabase el rol
-        const role = user.user_metadata?.role || user.app_metadata?.role;
-        setIsAdmin(role === 'ADMIN');
     };
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
+        setIsAdmin(false);
         navigate('/login');
     };
 
-    // Helper para saber si la ruta está activa
     const isActive = (path: string) => location.pathname === path;
 
     return (
         <header className="sticky top-0 z-50 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E8E2D8]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
 
-                {/* LOGO DE LA MARCA */}
+                {/* LOGO */}
                 <Link to="/" className="flex items-center gap-2 group">
                     <div className="w-9 h-9 rounded-xl bg-[#E05A47] flex items-center justify-center text-white font-serif font-black text-lg shadow-sm group-hover:bg-[#C84937] transition">
                         X
@@ -64,9 +75,8 @@ export default function Navbar() {
                     </div>
                 </Link>
 
-                {/* ENLACES PRINCIPALES */}
+                {/* NAVEGACIÓN */}
                 <nav className="flex items-center gap-1 sm:gap-2">
-                    {/* Explorar / Catálogo */}
                     <Link
                         to="/"
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition ${isActive('/')
@@ -78,7 +88,6 @@ export default function Navbar() {
                         <span>Explorar</span>
                     </Link>
 
-                    {/* Mis Reservaciones (Visible para usuarios con sesión) */}
                     {sessionUser && (
                         <Link
                             to="/my-bookings"
@@ -92,7 +101,6 @@ export default function Navbar() {
                         </Link>
                     )}
 
-                    {/* Modo Anfitrión */}
                     <Link
                         to="/host"
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition ${isActive('/host')
@@ -104,7 +112,7 @@ export default function Navbar() {
                         <span>Modo Anfitrión</span>
                     </Link>
 
-                    {/* PESTAÑA DE REPORTES: Solo visible si el rol es ADMIN */}
+                    {/* Enlace visible solo cuando roles incluye "ADMIN" */}
                     {isAdmin && (
                         <Link
                             to="/reports"
@@ -119,7 +127,7 @@ export default function Navbar() {
                     )}
                 </nav>
 
-                {/* ACCIONES DE SESIÓN / USUARIO */}
+                {/* SESIÓN */}
                 <div className="flex items-center gap-3">
                     {sessionUser ? (
                         <div className="flex items-center gap-3">
