@@ -1,80 +1,272 @@
-import { useState } from 'react';
-import { FileSpreadsheet, FileText, Filter, Calendar } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { apiFetch } from '../api/client';
+import { supabase } from '../services/supabase';
+import { FileText, Download, Filter, AlertCircle, ShieldAlert, Table } from 'lucide-react';
+
+interface ReportDefinition {
+    id: string;
+    name: string;
+    description?: string;
+    format?: 'xlsx' | 'pdf';
+    hasDateFilter?: boolean;
+}
 
 export default function Reports() {
-    const [reportType, setReportType] = useState('bookings');
-    const [startDate, setStartDate] = useState('2026-01-01');
-    const [endDate, setEndDate] = useState('2026-12-31');
+    const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+    const [reports, setReports] = useState<ReportDefinition[]>([]);
+    const [selectedReportId, setSelectedReportId] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [reportData, setReportData] = useState<any[]>([]);
+    const [loadingData, setLoadingData] = useState(false);
+    const [downloading, setDownloading] = useState(false);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    const handleExport = (format: 'excel' | 'pdf') => {
-        const url = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/v1/reports/${reportType}/export?format=${format}&start=${startDate}&end=${endDate}`;
-        window.open(url, '_blank');
+    // 1. Validar rol de ADMIN
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (!session) {
+                setIsAdmin(false);
+                return;
+            }
+            const role = session.user.user_metadata?.role || session.user.app_metadata?.role;
+            setIsAdmin(role === 'ADMIN');
+        });
+    }, []);
+
+    // 2. Cargar catálogo de reportes de Gio
+    useEffect(() => {
+        if (!isAdmin) return;
+
+        apiFetch<ReportDefinition[]>('/api/v1/reports')
+            .then((data) => {
+                const list = Array.isArray(data) ? data : (data as any)?.content || [];
+                setReports(list);
+                if (list.length > 0) setSelectedReportId(list[0].id);
+            })
+            .catch((err: any) => setErrorMsg(err.message || 'Error al cargar lista de reportes.'));
+    }, [isAdmin]);
+
+    // 3. Consultar datos para renderizar la tabla
+    const handleQueryData = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedReportId) return;
+
+        setLoadingData(true);
+        setErrorMsg(null);
+
+        const queryParams = new URLSearchParams();
+        if (startDate) queryParams.append('start', startDate);
+        if (endDate) queryParams.append('end', endDate);
+
+        const url = `/api/v1/reports/${selectedReportId}?${queryParams.toString()}`;
+
+        try {
+            const data: any = await apiFetch(url);
+            const rows = Array.isArray(data) ? data : data?.content || [];
+            setReportData(rows);
+        } catch (err: any) {
+            setErrorMsg(err.message || 'Error al obtener los datos del reporte.');
+            setReportData([]);
+        } finally {
+            setLoadingData(false);
+        }
     };
 
+    // 4. Descarga segura mediante Blob con Bearer Token
+    const handleDownload = async (fileExtension: 'xlsx' | 'pdf' = 'xlsx') => {
+        if (!selectedReportId) return;
+
+        setDownloading(true);
+        setErrorMsg(null);
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            if (!token) throw new Error('No hay sesión activa para descargar el reporte.');
+
+            const queryParams = new URLSearchParams();
+            if (startDate) queryParams.append('start', startDate);
+            if (endDate) queryParams.append('end', endDate);
+            queryParams.append('format', fileExtension);
+
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+            const endpoint = `${API_URL}/api/v1/reports/${selectedReportId}/export?${queryParams.toString()}`;
+
+            const response = await fetch(endpoint, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error ${response.status}: no se pudo generar el archivo.`);
+            }
+
+            // Convertir respuesta a Blob y generar descarga en memoria
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const tempLink = document.createElement('a');
+            tempLink.href = blobUrl;
+            tempLink.setAttribute('download', `reporte_${selectedReportId}_${Date.now()}.${fileExtension}`);
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            document.body.removeChild(tempLink);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (err: any) {
+            setErrorMsg(err.message || 'Error al descargar el archivo del reporte.');
+        } finally {
+            setDownloading(false);
+        }
+    };
+
+    if (isAdmin === false) {
+        return (
+            <div className="max-w-md mx-auto p-12 text-center bg-white border border-[#E8E2D8] rounded-3xl space-y-4">
+                <ShieldAlert className="w-12 h-12 text-[#E05A47] mx-auto" />
+                <h2 className="text-xl font-serif font-bold text-[#1E1C1A]">Acceso Restringido</h2>
+                <p className="text-xs text-[#736E65]">
+                    Este módulo es de uso exclusivo para cuentas con rol de Administrador.
+                </p>
+            </div>
+        );
+    }
+
+    if (isAdmin === null) {
+        return <div className="p-12 text-center text-xs text-[#736E65]">Verificando permisos de acceso...</div>;
+    }
+
     return (
-        <div className="max-w-4xl mx-auto bg-white border border-[#EAE3D9] rounded-2xl p-8 shadow-sm text-[#1F1E1D] space-y-6">
-            <div>
-                <h1 className="text-3xl font-serif font-bold text-[#1F1E1D]">Reportes Empresariales</h1>
-                <p className="text-[#7A756D] text-sm mt-1">Genera y exporta estadísticas operativas de reservaciones y ocupación</p>
+        <div className="max-w-5xl mx-auto space-y-8 pb-16 animate-fadeIn">
+            <div className="border-b border-[#E8E2D8] pb-4">
+                <h1 className="text-3xl font-serif font-bold text-[#1E1C1A]">Reportes del Sistema</h1>
+                <p className="text-xs text-[#736E65] mt-1">
+                    Exportación y visualización auditada de datos transaccionales para administración y Power BI
+                </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#FAF7F0] p-5 rounded-xl border border-[#EAE3D9]">
-                <div>
-                    <label className="block text-xs font-semibold text-[#7A756D] uppercase mb-1.5 flex items-center gap-1">
-                        <Filter className="w-3.5 h-3.5 text-[#E05A47]" /> Tipo de Reporte
-                    </label>
-                    <select
-                        value={reportType}
-                        onChange={(e) => setReportType(e.target.value)}
-                        className="w-full bg-white border border-[#EAE3D9] rounded-xl px-3 py-2 text-sm text-[#1F1E1D] focus:outline-none focus:border-[#E05A47]"
+            {errorMsg && (
+                <div className="bg-[#FEEAE6] border border-[#F5C2B8] text-[#C84937] p-4 rounded-2xl flex items-center gap-3 text-xs">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <span>{errorMsg}</span>
+                </div>
+            )}
+
+            {/* Selector de Reporte y Filtros */}
+            <form onSubmit={handleQueryData} className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label className="block text-xs font-semibold text-[#1E1C1A] mb-1.5 flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5 text-[#E05A47]" /> Tipo de Reporte
+                        </label>
+                        <select
+                            value={selectedReportId}
+                            onChange={(e) => setSelectedReportId(e.target.value)}
+                            className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                        >
+                            {reports.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                    {r.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-semibold text-[#1E1C1A] mb-1.5 flex items-center gap-1">
+                            <Filter className="w-3.5 h-3.5 text-[#E05A47]" /> Fecha Inicial
+                        </label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-semibold text-[#1E1C1A] mb-1.5 flex items-center gap-1">
+                            <Filter className="w-3.5 h-3.5 text-[#E05A47]" /> Fecha Final
+                        </label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F0EBE1]">
+                    <button
+                        type="submit"
+                        disabled={loadingData}
+                        className="bg-[#1E1C1A] hover:bg-black text-white px-5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2"
                     >
-                        <option value="bookings">1. Reservaciones por período</option>
-                        <option value="revenue">2. Ingresos por período</option>
-                        <option value="top-properties">3. Alojamientos más reservados</option>
-                        <option value="host-earnings">4. Anfitriones con más ingresos</option>
-                        <option value="occupancy-municipality">8. Ocupación por municipio</option>
-                        <option value="ratings">9. Calificaciones de alojamientos</option>
-                    </select>
-                </div>
+                        <Table className="w-3.5 h-3.5" />
+                        {loadingData ? 'Cargando datos...' : 'Visualizar Tabla'}
+                    </button>
 
-                <div>
-                    <label className="block text-xs font-semibold text-[#7A756D] uppercase mb-1.5 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-[#E05A47]" /> Fecha Inicial
-                    </label>
-                    <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-full bg-white border border-[#EAE3D9] rounded-xl px-3 py-2 text-sm text-[#1F1E1D] focus:outline-none focus:border-[#E05A47]"
-                    />
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled={downloading}
+                            onClick={() => handleDownload('xlsx')}
+                            className="bg-[#3A833A] hover:bg-[#2F6D2F] text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50"
+                        >
+                            <Download className="w-3.5 h-3.5" />
+                            Descargar .XLSX
+                        </button>
+                        <button
+                            type="button"
+                            disabled={downloading}
+                            onClick={() => handleDownload('pdf')}
+                            className="bg-[#E05A47] hover:bg-[#C84937] text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm disabled:opacity-50"
+                        >
+                            <Download className="w-3.5 h-3.5" />
+                            Descargar .PDF
+                        </button>
+                    </div>
                 </div>
+            </form>
 
-                <div>
-                    <label className="block text-xs font-semibold text-[#7A756D] uppercase mb-1.5 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-[#E05A47]" /> Fecha Final
-                    </label>
-                    <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-full bg-white border border-[#EAE3D9] rounded-xl px-3 py-2 text-sm text-[#1F1E1D] focus:outline-none focus:border-[#E05A47]"
-                    />
-                </div>
-            </div>
+            {/* Renderizado de Tabla Dinámica */}
+            <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm overflow-hidden">
+                <h3 className="font-serif font-bold text-base text-[#1E1C1A] mb-4 flex items-center gap-2">
+                    <Table className="w-4 h-4 text-[#E05A47]" /> Resultados del Reporte
+                </h3>
 
-            <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-[#F2ECE4]">
-                <button
-                    onClick={() => handleExport('pdf')}
-                    className="flex-1 bg-[#FEEAE6] hover:bg-[#FDD5CD] text-[#E05A47] font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors border border-[#F5C2B8]"
-                >
-                    <FileText className="w-4 h-4" /> Exportar a PDF
-                </button>
-                <button
-                    onClick={() => handleExport('excel')}
-                    className="flex-1 bg-[#1F1E1D] hover:bg-[#33312E] text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
-                >
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar a Excel
-                </button>
+                {reportData.length === 0 ? (
+                    <p className="text-xs text-[#736E65] text-center py-8">
+                        Selecciona los filtros y presiona "Visualizar Tabla" para consultar la información.
+                    </p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="border-b border-[#E8E2D8] bg-[#FAF7F2]">
+                                    {Object.keys(reportData[0]).map((header) => (
+                                        <th key={header} className="p-3 text-[11px] font-bold text-[#1E1C1A] uppercase tracking-wider">
+                                            {header}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {reportData.map((row, idx) => (
+                                    <tr key={idx} className="border-b border-[#F0EBE1] hover:bg-[#FAF7F2]/50 transition">
+                                        {Object.values(row).map((val: any, cIdx) => (
+                                            <td key={cIdx} className="p-3 text-[#5C574F]">
+                                                {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );

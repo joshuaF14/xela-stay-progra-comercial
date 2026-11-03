@@ -2,7 +2,17 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api/client';
 import { supabase } from '../services/supabase';
-import { Home, DollarSign, MapPin, Image, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Home, DollarSign, MapPin, Image, CheckCircle2, AlertCircle, Tag, ListChecks } from 'lucide-react';
+
+interface CategoryItem {
+    id: string;
+    name: string;
+}
+
+interface AmenityItem {
+    id: string;
+    name: string;
+}
 
 export default function HostDashboard() {
     const navigate = useNavigate();
@@ -10,10 +20,11 @@ export default function HostDashboard() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
-    // UUID de categoría dinámico para el backend
-    const [activeCategoryId, setActiveCategoryId] = useState<string>('');
+    const [categories, setCategories] = useState<CategoryItem[]>([]);
+    const [amenitiesList, setAmenitiesList] = useState<AmenityItem[]>([]);
+    const [selectedCategoryId, setSelectedCategoryId] = useState('');
+    const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
-    // Estados del formulario inicializados completamente vacíos
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [pricePerNight, setPricePerNight] = useState('');
@@ -26,30 +37,36 @@ export default function HostDashboard() {
     const [longitude, setLongitude] = useState('');
     const [imageUrl, setImageUrl] = useState('');
 
-    // Obtener un UUID de categoría válido desde las propiedades existentes
     useEffect(() => {
-        apiFetch<any>('/api/v1/properties')
+        // Consumir únicamente el endpoint oficial de categorías
+        apiFetch<any>('/api/v1/property-categories')
             .then((data) => {
                 const list = Array.isArray(data) ? data : data?.content || [];
-                const firstProp = list[0];
-                const existingCatId = firstProp?.categoryId || firstProp?.category?.id;
-                if (existingCatId && typeof existingCatId === 'string' && existingCatId.length === 36) {
-                    setActiveCategoryId(existingCatId);
-                } else {
-                    setActiveCategoryId('a0000000-0000-0000-0000-000000000001');
-                }
+                setCategories(list);
+                if (list.length > 0) setSelectedCategoryId(list[0].id);
             })
-            .catch(() => {
-                setActiveCategoryId('a0000000-0000-0000-0000-000000000001');
-            });
+            .catch(() => setCategories([]));
+
+        // Cargar amenidades disponibles
+        apiFetch<any>('/api/v1/amenities')
+            .then((data) => {
+                const list = Array.isArray(data) ? data : data?.content || [];
+                setAmenitiesList(list);
+            })
+            .catch(() => setAmenitiesList([]));
     }, []);
+
+    const toggleAmenity = (id: string) => {
+        setSelectedAmenities((prev) =>
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+        );
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setErrorMsg(null);
         setSuccess(false);
 
-        // 1. Verificar autenticación con Supabase
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
             alert('Debes iniciar sesión para publicar un alojamiento.');
@@ -57,36 +74,75 @@ export default function HostDashboard() {
             return;
         }
 
+        if (!selectedCategoryId) {
+            setErrorMsg('Debes seleccionar una categoría válida.');
+            return;
+        }
+
         setLoading(true);
 
-        // 2. Construir payload convirtiendo campos numéricos de forma estricta
-        const payload = {
-            title: title.trim(),
-            description: description.trim(),
-            categoryId: activeCategoryId || 'a0000000-0000-0000-0000-000000000001',
-            pricePerNight: Number(pricePerNight),
-            currency: 'GTQ',
-            capacity: Number(capacity),
-            bedrooms: Number(bedrooms),
-            bathrooms: Number(bathrooms),
-            location: {
-                department: 'Quetzaltenango',
-                municipality: municipality.trim() || 'Quetzaltenango',
-                address: address.trim(),
-                latitude: Number(latitude),
-                longitude: Number(longitude),
-            },
-            imageUrls: [imageUrl.trim()],
-        };
-
         try {
-            await apiFetch('/api/v1/properties', {
+            // 1. Promover usuario a rol HOST
+            try {
+                await apiFetch('/api/v1/me/host', { method: 'POST' });
+            } catch {
+                // Continuar si ya contaba con el rol
+            }
+
+            // 2. Crear propiedad con categoryId real
+            const propertyPayload = {
+                title: title.trim(),
+                description: description.trim(),
+                categoryId: selectedCategoryId,
+                pricePerNight: Number(pricePerNight),
+                currency: 'GTQ',
+                capacity: Number(capacity),
+                bedrooms: Number(bedrooms),
+                bathrooms: Number(bathrooms),
+                location: {
+                    department: 'Quetzaltenango',
+                    municipality: municipality.trim() || 'Quetzaltenango',
+                    address: address.trim(),
+                    latitude: Number(latitude),
+                    longitude: Number(longitude),
+                },
+            };
+
+            const createdProperty: any = await apiFetch('/api/v1/properties', {
                 method: 'POST',
-                body: JSON.stringify(payload),
+                body: JSON.stringify(propertyPayload),
             });
 
+            const propertyId = createdProperty?.id || createdProperty?.propertyId;
+            if (!propertyId) throw new Error('No se recibió el ID de la propiedad creada.');
+
+            // 3. Registrar imagen de portada
+            if (imageUrl.trim()) {
+                await apiFetch(`/api/v1/properties/${propertyId}/images`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        imageUrl: imageUrl.trim(),
+                        isCover: true,
+                    }),
+                });
+            }
+
+            // 4. Asociar amenidades
+            if (selectedAmenities.length > 0) {
+                await apiFetch(`/api/v1/properties/${propertyId}/amenities`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ amenityIds: selectedAmenities }),
+                });
+            }
+
+            // 5. Publicar propiedad
+            await apiFetch(`/api/v1/properties/${propertyId}/status`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: 'PUBLISHED' }),
+            });
+
+            // Confirmar éxito tras completar los 5 pasos
             setSuccess(true);
-            // Limpiar formulario tras publicar
             setTitle('');
             setDescription('');
             setPricePerNight('');
@@ -98,12 +154,13 @@ export default function HostDashboard() {
             setLatitude('');
             setLongitude('');
             setImageUrl('');
+            setSelectedAmenities([]);
 
             setTimeout(() => {
                 navigate('/');
             }, 1500);
         } catch (err: any) {
-            setErrorMsg(err.message || 'Error al publicar la propiedad. Revisa los datos ingresados.');
+            setErrorMsg(err.message || 'Error durante la secuencia de publicación.');
         } finally {
             setLoading(false);
         }
@@ -111,7 +168,6 @@ export default function HostDashboard() {
 
     return (
         <div className="max-w-3xl mx-auto space-y-8 pb-16 animate-fadeIn">
-            {/* Encabezado */}
             <div className="border-b border-[#E8E2D8] pb-4">
                 <h1 className="text-3xl font-serif font-bold text-[#1E1C1A]">Publicar Alojamiento</h1>
                 <p className="text-xs text-[#736E65] mt-1">
@@ -122,7 +178,7 @@ export default function HostDashboard() {
             {success && (
                 <div className="bg-[#F4F9F4] border border-[#CCE2CC] text-[#3A833A] p-4 rounded-2xl flex items-center gap-3 text-xs">
                     <CheckCircle2 className="w-5 h-5 shrink-0" />
-                    <span>¡Alojamiento publicado con éxito! Redirigiendo al catálogo...</span>
+                    <span>¡Alojamiento publicado con éxito en estado PUBLISHED! Redirigiendo al catálogo...</span>
                 </div>
             )}
 
@@ -140,15 +196,39 @@ export default function HostDashboard() {
                         <Home className="w-4 h-4 text-[#E05A47]" /> 1. Detalles Principales
                     </h3>
 
-                    <div>
-                        <label className="block text-xs font-semibold text-[#1E1C1A] mb-1">Título del Alojamiento</label>
-                        <input
-                            type="text"
-                            required
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3.5 py-2.5 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
-                        />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-[#1E1C1A] mb-1">Título del Alojamiento</label>
+                            <input
+                                type="text"
+                                required
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3.5 py-2.5 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-semibold text-[#1E1C1A] mb-1 flex items-center gap-1">
+                                <Tag className="w-3.5 h-3.5 text-[#E05A47]" /> Categoría
+                            </label>
+                            <select
+                                required
+                                value={selectedCategoryId}
+                                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                                className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3.5 py-2.5 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                            >
+                                {categories.length === 0 ? (
+                                    <option value="">Cargando categorías...</option>
+                                ) : (
+                                    categories.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}
+                                        </option>
+                                    ))
+                                )}
+                            </select>
+                        </div>
                     </div>
 
                     <div>
@@ -174,7 +254,7 @@ export default function HostDashboard() {
                             <label className="block text-[11px] font-semibold text-[#736E65] mb-1">Precio / Noche (GTQ)</label>
                             <input
                                 type="number"
-                                min="50"
+                                min="1"
                                 required
                                 value={pricePerNight}
                                 onChange={(e) => setPricePerNight(e.target.value)}
@@ -217,10 +297,38 @@ export default function HostDashboard() {
                     </div>
                 </div>
 
-                {/* 3. Ubicación y Coordenadas */}
+                {/* 3. Amenidades */}
+                {amenitiesList.length > 0 && (
+                    <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
+                        <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
+                            <ListChecks className="w-4 h-4 text-[#E05A47]" /> 3. Amenidades y Servicios
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                            {amenitiesList.map((amenity) => (
+                                <label
+                                    key={amenity.id}
+                                    className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs cursor-pointer transition ${selectedAmenities.includes(amenity.id)
+                                            ? 'bg-[#FEEAE6] border-[#E05A47] text-[#E05A47] font-semibold'
+                                            : 'bg-[#FAF7F2] border-[#E8E2D8] text-[#1E1C1A]'
+                                        }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedAmenities.includes(amenity.id)}
+                                        onChange={() => toggleAmenity(amenity.id)}
+                                        className="accent-[#E05A47]"
+                                    />
+                                    <span>{amenity.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. Ubicación */}
                 <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                     <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-[#E05A47]" /> 3. Ubicación y Coordenadas para el Mapa
+                        <MapPin className="w-4 h-4 text-[#E05A47]" /> 4. Ubicación y Coordenadas
                     </h3>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -267,14 +375,14 @@ export default function HostDashboard() {
                     </div>
                 </div>
 
-                {/* 4. Fotografía de Portada */}
+                {/* 5. Fotografía */}
                 <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                     <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
-                        <Image className="w-4 h-4 text-[#E05A47]" /> 4. Fotografía de Portada
+                        <Image className="w-4 h-4 text-[#E05A47]" /> 5. Fotografía de Portada
                     </h3>
 
                     <div>
-                        <label className="block text-[11px] font-semibold text-[#736E65] mb-1">URL de Imagen</label>
+                        <label className="block text-[11px] font-semibold text-[#736E65] mb-1">URL directa de la fotografía</label>
                         <input
                             type="url"
                             required
@@ -290,7 +398,7 @@ export default function HostDashboard() {
                     disabled={loading}
                     className="w-full bg-[#E05A47] hover:bg-[#C84937] text-white font-semibold py-3.5 rounded-2xl transition-all shadow-md shadow-[#E05A47]/20 disabled:opacity-50 text-xs font-bold"
                 >
-                    {loading ? 'Publicando en Supabase...' : 'Publicar Alojamiento'}
+                    {loading ? 'Procesando los 5 pasos de publicación...' : 'Publicar Alojamiento'}
                 </button>
             </form>
         </div>
