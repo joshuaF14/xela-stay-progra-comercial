@@ -9,7 +9,7 @@ Frontend ──Authorization: Bearer <JWT>──> API Spring ──valida firma 
 
 - El frontend usa Supabase Auth solo para iniciar sesión y registrarse, y envía el `access_token` al backend en el encabezado `Authorization: Bearer`.
 - El backend es un **resource server**: no emite tokens ni guarda contraseñas; valida cada JWT.
-- Rutas públicas: `GET /api/health`, `GET /actuator/health`, `GET /api/v1/properties/{id}/availability` y `GET /api/v1/properties/{id}/reviews`. El resto de `/api/**` requiere un JWT válido. Cualquier otra ruta se rechaza.
+- Rutas públicas (solo `GET`): `/api/health`, `/actuator/health`, `/api/v1/properties`, `/api/v1/properties/{id}`, `/api/v1/properties/{id}/availability`, `/api/v1/properties/{id}/reviews`, `/api/v1/property-categories/**`, `/api/v1/amenities/**` y `/api/v1/locations/**`. El resto de `/api/**` requiere un JWT válido. Cualquier otra ruta se rechaza.
 - API stateless: sin sesión HTTP; CSRF desactivado para `/api/**` porque no se usan cookies.
 - Los errores 401/403 usan el formato común `{timestamp, status, error, message, path, details}` y conservan el encabezado `WWW-Authenticate`.
 
