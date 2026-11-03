@@ -3,6 +3,8 @@ package com.xelastay.payment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.booking.Booking;
 import com.xelastay.booking.BookingRepository;
 import com.xelastay.booking.BookingStatus;
@@ -42,6 +45,9 @@ class PaymentServiceTest {
     @Mock
     private PropertyReader properties;
 
+    @Mock
+    private AuditService audit;
+
     private final UUID guestId = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
     private final UUID propertyId = UUID.randomUUID();
@@ -50,7 +56,7 @@ class PaymentServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PaymentService(payments, bookings, properties);
+        service = new PaymentService(payments, bookings, properties, audit);
         booking = Booking.pending(propertyId, guestId, LocalDate.of(2030, 1, 10), LocalDate.of(2030, 1, 12), 2,
                 new BigDecimal("350.00"), new BigDecimal("700.00"), BigDecimal.ZERO, "GTQ", null);
         ReflectionTestUtils.setField(booking, "id", UUID.randomUUID());
@@ -71,6 +77,7 @@ class PaymentServiceTest {
         assertThat(response.paidAt()).isNotNull();
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.PENDING);
         verify(bookings, never()).save(any());
+        verify(audit).recordAction(eq("PAYMENT_CREATED"), eq("payment"), any(), isNull(), eq(response), eq(guestId));
     }
 
     @Test

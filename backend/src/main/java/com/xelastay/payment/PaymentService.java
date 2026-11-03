@@ -5,9 +5,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.booking.Booking;
 import com.xelastay.booking.BookingRepository;
 import com.xelastay.booking.BookingStatus;
@@ -40,11 +42,14 @@ public class PaymentService {
     private final PaymentRepository payments;
     private final BookingRepository bookings;
     private final PropertyReader properties;
+    private final AuditService audit;
 
-    public PaymentService(PaymentRepository payments, BookingRepository bookings, PropertyReader properties) {
+    public PaymentService(PaymentRepository payments, BookingRepository bookings, PropertyReader properties,
+            AuditService audit) {
         this.payments = payments;
         this.bookings = bookings;
         this.properties = properties;
+        this.audit = audit;
     }
 
     /**
@@ -67,7 +72,9 @@ public class PaymentService {
         boolean approved = !Boolean.TRUE.equals(request.simulateFailure());
         Payment payment = Payment.simulated(bookingId, booking.getTotal(), booking.getCurrency(),
                 request.paymentMethod(), approved);
-        return toResponse(payments.save(payment));
+        PaymentResponse created = toResponse(payments.save(payment));
+        audit.recordAction("PAYMENT_CREATED", "payment", created.id(), null, created, userId);
+        return created;
     }
 
     /** Pagos de una reserva: su huésped, el anfitrión del alojamiento o un ADMIN. Más recientes primero. */
@@ -124,7 +131,10 @@ public class PaymentService {
             throw error(HttpStatus.CONFLICT, "Solo se reembolsan pagos aprobados");
         }
         payment.refund();
-        return toResponse(payments.save(payment));
+        PaymentResponse refunded = toResponse(payments.save(payment));
+        audit.recordAction("PAYMENT_REFUNDED", "payment", paymentId, Map.of("status", PaymentStatus.APPROVED.name()),
+                Map.of("status", PaymentStatus.REFUNDED.name()), null);
+        return refunded;
     }
 
     private static OffsetDateTime startOfDay(LocalDate day) {

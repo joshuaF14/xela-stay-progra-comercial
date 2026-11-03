@@ -2,57 +2,109 @@
 
 ## Proyecto
 
-Xela Stay es una plataforma de reservas de alojamientos con mapas, chat, reseñas, IA (RAG) y procesamiento asíncrono de reservas. Es el proyecto final del curso Programación Comercial. Actualmente el repositorio es un esqueleto: no hay endpoints ni lógica de negocio implementada.
+Xela Stay es una plataforma de reservas de alojamientos en Quetzaltenango con mapas, chat, reseñas, pagos simulados,
+IA (RAG) y procesamiento asíncrono de reservas. Es el proyecto final del curso Programación Comercial.
+
+Estado: backend funcional con todos los módulos (ver la tabla de módulos), migraciones V1 y V2 aplicadas en Supabase y
+frontend conectado a la API. Contratos en [docs/api/ENDPOINTS.md](docs/api/ENDPOINTS.md).
 
 ## Stack fijo (no cambiar)
 
-- Backend: Java 21, Spring Boot 3.5, Maven, Spring Data JPA, Flyway.
+- Backend: Java 21, Spring Boot 3.5, Maven (Maven Wrapper), Spring Data JPA, Flyway.
 - Frontend: React, TypeScript, Vite.
-- Datos y autenticación: Supabase PostgreSQL y Supabase Auth (JWT validado en Spring).
-- Mensajería: RabbitMQ.
+- Datos y autenticación: Supabase PostgreSQL y Supabase Auth (JWT validado en Spring con JWKS).
+- Mensajería: RabbitMQ (outbox).
+- IA: Gemini con búsqueda de texto completo en PostgreSQL.
 - Contenedores: Docker.
 
 ## Estructura de carpetas
 
 ```text
-backend/                         API Spring Boot (paquete com.xelastay)
+backend/                         API Spring Boot (paquete com.xelastay, un paquete por módulo)
   src/main/resources/
-    application.properties       Configuración; lee variables y el .env local
-    db/migration/                Migraciones Flyway (V<n>__<descripcion>.sql)
-frontend/                        App React + TypeScript + Vite
+    application*.properties      Configuración (local y test); lee el .env de la raíz
+    db/migration/                Migraciones Flyway (V1, V2…) y callback afterMigrate.sql
+frontend/                        App React + TypeScript + Vite (lee frontend/.env)
+scripts/                         seed-demo.ps1: datos de demostración vía API
 supabase/migrations/             Sin uso para el esquema (ver su README.md)
 docs/
-  api/                           Contratos de API
-  architecture/                  Decisiones de arquitectura
-  database/                      Base de datos y procedimiento Flyway
+  api/                           ENDPOINTS.md y CONVENCIONES.md
+  architecture/                  Autenticación, auditoría, eventos y acceso a datos
+  database/                      Procedimiento y registro de migraciones
   decisions/                     Decisiones abiertas (PENDIENTES.md)
-  technical-manual/              Manual técnico
+  ai/                            Base de conocimiento del agente
 infra/rabbitmq/                  Configuración de RabbitMQ
-docker-compose.yml               Servicios locales (aún vacío)
+docker-compose.yml               RabbitMQ local
+.github/workflows/ci.yml         CI: backend (mvnw verify) y frontend (npm ci + build)
 .env.example                     Plantilla de variables sin valores reales
+CONTRIBUTING.md                  Flujo de PR, commits y migraciones
 ```
 
-Mantén la separación entre `backend/`, `frontend/`, `supabase/`, `docs/` e `infra/`. Documenta decisiones de arquitectura, API, datos y operación en su carpeta correspondiente.
+Mantén la separación entre `backend/`, `frontend/`, `supabase/`, `docs/` e `infra/`. Documenta decisiones de
+arquitectura, API, datos y operación en su carpeta correspondiente.
+
+## Módulos del backend
+
+| Paquete `com.xelastay` | Contenido | Responsable |
+|---|---|---|
+| `security`, `config`, `common` | JWT, perfil automático, CORS, `ApiError`, `PageResponse`, `Paging` | Joshua |
+| `profile` | `/me`, perfiles, roles | Joshua |
+| `catalog` | Categorías, amenidades, ubicaciones | Joshua |
+| `property` | Alojamientos, imágenes, amenidades del alojamiento | Joshua |
+| `payment` | Pagos simulados | Joshua |
+| `audit` | `AuditService` y `/audit-logs` | Joshua |
+| `booking` | Reservas y disponibilidad | Giovanni |
+| `events`, `notification` | Outbox, RabbitMQ y notificaciones | Giovanni |
+| `review`, `messaging` | Reseñas y chat | Giovanni |
+| `ai` | Agente RAG | Giovanni |
+
+Convenciones de código y API: [docs/api/CONVENCIONES.md](docs/api/CONVENCIONES.md). Entidades JPA idénticas a V1
+(Hibernate en `validate`), DTO como records, validación con `jakarta.validation`, usuario siempre desde `CurrentUser`,
+roles con `@PreAuthorize`. Cada operación que cambia datos de negocio se registra con `AuditService`
+([AUDITORIA.md](docs/architecture/AUDITORIA.md)).
 
 ## Reglas obligatorias para agentes
 
-- No hacer commits, pushes, merges, rebases ni crear, cambiar o borrar ramas. Todo lo de Git lo hace el equipo manualmente.
-- No ejecutar migraciones, no conectarse a Supabase ni correr Flyway. `FLYWAY_ENABLED` debe permanecer en `false`.
-- No leer, mostrar ni copiar valores de `.env` ni contraseñas. Para saber si una variable existe, revisar solo su nombre.
+- No hacer commits, pushes, merges, rebases ni crear, cambiar o borrar ramas, salvo las operaciones de Git que el
+  usuario autorice explícitamente en su mensaje. Los commits los hace el equipo.
+- No ejecutar migraciones ni Flyway contra Supabase. Única excepción: cuando el usuario escriba exactamente
+  `AUTORIZO MIGRACIÓN V<n>`, y solo para esa versión, siguiendo [SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md).
+  `FLYWAY_ENABLED` permanece en `false` en el `.env`.
+- El MCP de Supabase se usa **solo en modo lectura** (esquema y verificación de datos). Nunca escribir con él. No
+  mostrar datos personales (correos, teléfonos) salvo que el usuario lo pida.
+- No leer, mostrar ni copiar valores de `.env` ni contraseñas. Para saber si una variable existe, revisar solo su
+  nombre. En logs que se resuman, ocultar URL, host y usuario de la base de datos.
 - No incluir secretos en archivos versionados; `.env.example` solo lleva marcadores de posición.
-- No instalar dependencias ni ejecutar `npm install` o `mvn` sin aprobación previa.
-- No inventar endpoints, tablas, estados ni reglas de negocio. No agregar lógica de negocio sin un requerimiento explícito.
-- Trabajar por bloques: al terminar cada bloque, mostrar el diff y esperar confirmación antes de continuar.
+- Usar `.\mvnw` dentro de `backend/` (Maven no está instalado globalmente). Pedir aprobación antes de agregar
+  dependencias nuevas (Maven o npm).
+- No inventar endpoints, tablas, estados ni reglas de negocio. Una regla adicional necesaria (por ejemplo, evitar que
+  un ADMIN se bloquee a sí mismo) se informa explícitamente al entregar.
+- No modificar los módulos de otro responsable salvo lo que se pida; si es necesario, con el cambio mínimo y sin
+  romper sus pruebas.
+- Trabajar por bloques: al terminar cada bloque, `.\mvnw test` debe pasar; mostrar el diff, los comandos de prueba y
+  el commit sugerido, y esperar confirmación antes de continuar.
 
 ## Base de datos y Flyway
 
-Flyway es el único mecanismo para versionar el esquema. Las migraciones viven en `backend/src/main/resources/db/migration`; no se usa la CLI de Supabase ni el Dashboard para crear tablas. Una migración ya aplicada no se edita: cualquier cambio es una nueva versión. El procedimiento completo (respaldo, verificación previa y autorización) está en [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md).
+Flyway es el único mecanismo para versionar el esquema. Las migraciones viven en
+`backend/src/main/resources/db/migration`; no se usa la CLI de Supabase ni el Dashboard para crear tablas. Una
+migración ya aplicada no se edita: cualquier cambio es una nueva versión. Aplicadas: V1 (esquema) y V2 (roles y
+catálogo base). Procedimiento y registro: [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md).
+
+El Session pooler de Supabase admite 15 clientes para todo el proyecto: cada backend usa `DB_POOL_SIZE` conexiones
+(3 por defecto). Detener los backends que no se usen.
 
 ### Callback `afterMigrate.sql`
 
-`backend/src/main/resources/db/migration/afterMigrate.sql` es un callback de Flyway: se ejecuta al final de **cada** `migrate`, cuando las migraciones ya están confirmadas, y no se registra en `flyway_schema_history` ni tiene checksum. Hoy activa RLS en `flyway_schema_history` y le retira los privilegios a `anon` y `authenticated`. Eso no puede ir dentro de una migración, porque alterar esa tabla la bloquearía mientras Flyway registra la propia migración.
+`backend/src/main/resources/db/migration/afterMigrate.sql` es un callback de Flyway: se ejecuta al final de **cada**
+`migrate`, cuando las migraciones ya están confirmadas, y no se registra en `flyway_schema_history` ni tiene
+checksum. Hoy activa RLS en `flyway_schema_history` y le retira los privilegios a `anon` y `authenticated`. Eso no
+puede ir dentro de una migración, porque alterar esa tabla la bloquearía mientras Flyway registra la propia migración.
 
-Regla: `afterMigrate.sql` **solo puede contener sentencias de permisos repetibles** (`ENABLE ROW LEVEL SECURITY`, `GRANT`, `REVOKE`), que dan el mismo resultado sin importar cuántas veces se ejecuten. Nunca se agregan ahí `CREATE`, `ALTER` de columnas, `DROP`, `INSERT`, `UPDATE`, `DELETE` ni cambios de esquema o de datos: esos van en una migración versionada (V2, V3…).
+Regla: `afterMigrate.sql` **solo puede contener sentencias de permisos repetibles** (`ENABLE ROW LEVEL SECURITY`,
+`GRANT`, `REVOKE`), que dan el mismo resultado sin importar cuántas veces se ejecuten. Nunca se agregan ahí `CREATE`,
+`ALTER` de columnas, `DROP`, `INSERT`, `UPDATE`, `DELETE` ni cambios de esquema o de datos: esos van en una migración
+versionada (V3, V4…).
 
 ## Flujo de ramas
 
@@ -61,8 +113,8 @@ feat/* ──PR──> develop ──PR──> main
 ```
 
 - Cada funcionalidad se trabaja en una rama `feat/*` creada desde `develop`.
-- Toda integración a `develop` y a `main` se hace mediante Pull Request revisado.
-- No se hace push directo a `develop` ni a `main`.
+- Toda integración a `develop` y a `main` se hace mediante Pull Request revisado (al menos una aprobación).
+- No se hace push directo a `develop` ni a `main`. Detalle en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Responsables
 

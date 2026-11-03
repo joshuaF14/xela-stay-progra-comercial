@@ -7,9 +7,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.dto.CatalogItemRequest;
 import com.xelastay.catalog.dto.CategoryResponse;
 
@@ -29,11 +31,14 @@ class CategoryServiceTest {
     @Mock
     private PropertyCategoryRepository categories;
 
+    @Mock
+    private AuditService audit;
+
     private CategoryService service;
 
     @BeforeEach
     void setUp() {
-        service = new CategoryService(categories);
+        service = new CategoryService(categories, audit);
     }
 
     @Test
@@ -98,6 +103,8 @@ class CategoryServiceTest {
         assertThat(category.isActive()).isFalse();
         verify(categories).save(category);
         verify(categories, never()).delete(any());
+        verify(audit).recordAction("CATEGORY_DEACTIVATED", "property_category", category.getId(),
+                Map.of("active", true), Map.of("active", false), null);
     }
 
     private static PropertyCategory category(String name, boolean active) {

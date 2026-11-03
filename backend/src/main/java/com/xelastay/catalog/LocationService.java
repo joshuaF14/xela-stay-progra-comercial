@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.dto.LocationRequest;
 import com.xelastay.catalog.dto.LocationResponse;
 import com.xelastay.common.PageResponse;
@@ -29,9 +30,11 @@ public class LocationService {
     private static final int COORDINATE_SCALE = 7;
 
     private final LocationRepository locations;
+    private final AuditService audit;
 
-    public LocationService(LocationRepository locations) {
+    public LocationService(LocationRepository locations, AuditService audit) {
         this.locations = locations;
+        this.audit = audit;
     }
 
     /** Orden: departamento, municipio y dirección. Filtros opcionales sin distinguir mayúsculas. */
@@ -62,8 +65,11 @@ public class LocationService {
     /** Crea la ubicación y devuelve la entidad (lo usa el módulo de alojamientos en la misma transacción). */
     @Transactional
     public Location createEntity(LocationRequest request) {
-        return locations.save(Location.create(request.department().trim(), request.municipality().trim(),
-                request.address().trim(), scale(request.latitude()), scale(request.longitude())));
+        Location location = locations.save(Location.create(request.department().trim(),
+                request.municipality().trim(), request.address().trim(), scale(request.latitude()),
+                scale(request.longitude())));
+        audit.recordAction("LOCATION_CREATED", "location", location.getId(), null, toResponse(location), null);
+        return location;
     }
 
     @Transactional
@@ -73,9 +79,12 @@ public class LocationService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "La ubicación la usan alojamientos de otro anfitrión");
         }
+        LocationResponse before = toResponse(location);
         location.update(request.department().trim(), request.municipality().trim(), request.address().trim(),
                 scale(request.latitude()), scale(request.longitude()));
-        return toResponse(locations.save(location));
+        LocationResponse after = toResponse(locations.save(location));
+        audit.recordAction("LOCATION_UPDATED", "location", id, before, after, null);
+        return after;
     }
 
     private Location find(UUID id) {

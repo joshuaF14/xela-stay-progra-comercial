@@ -3,6 +3,7 @@ package com.xelastay.profile;
 import java.util.List;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.profile.dto.RoleRequest;
 import com.xelastay.profile.dto.RoleResponse;
 
@@ -17,10 +18,12 @@ public class RoleService {
 
     private final RoleRepository roles;
     private final ProfileRoleRepository profileRoles;
+    private final AuditService audit;
 
-    public RoleService(RoleRepository roles, ProfileRoleRepository profileRoles) {
+    public RoleService(RoleRepository roles, ProfileRoleRepository profileRoles, AuditService audit) {
         this.roles = roles;
         this.profileRoles = profileRoles;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -38,7 +41,9 @@ public class RoleService {
         if (roles.existsByName(request.name())) {
             throw error(HttpStatus.CONFLICT, "Ya existe un rol con ese nombre");
         }
-        return toResponse(roles.save(Role.create(request.name(), blankToNull(request.description()))));
+        RoleResponse created = toResponse(roles.save(Role.create(request.name(), blankToNull(request.description()))));
+        audit.recordAction("ROLE_CREATED", "role", created.id(), null, created, null);
+        return created;
     }
 
     @Transactional
@@ -51,8 +56,11 @@ public class RoleService {
         if (renamed && roles.existsByName(request.name())) {
             throw error(HttpStatus.CONFLICT, "Ya existe un rol con ese nombre");
         }
+        RoleResponse before = toResponse(role);
         role.update(request.name(), blankToNull(request.description()));
-        return toResponse(roles.save(role));
+        RoleResponse after = toResponse(roles.save(role));
+        audit.recordAction("ROLE_UPDATED", "role", id, before, after, null);
+        return after;
     }
 
     @Transactional
@@ -65,6 +73,7 @@ public class RoleService {
             throw error(HttpStatus.CONFLICT, "El rol está asignado a uno o más perfiles");
         }
         roles.delete(role);
+        audit.recordAction("ROLE_DELETED", "role", id, toResponse(role), null, null);
     }
 
     private Role find(UUID id) {

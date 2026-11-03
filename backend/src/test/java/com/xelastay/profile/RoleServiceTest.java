@@ -3,6 +3,8 @@ package com.xelastay.profile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +12,7 @@ import static org.mockito.Mockito.when;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.profile.dto.RoleRequest;
 import com.xelastay.profile.dto.RoleResponse;
 
@@ -31,11 +34,14 @@ class RoleServiceTest {
     @Mock
     private ProfileRoleRepository profileRoles;
 
+    @Mock
+    private AuditService audit;
+
     private RoleService service;
 
     @BeforeEach
     void setUp() {
-        service = new RoleService(roles, profileRoles);
+        service = new RoleService(roles, profileRoles, audit);
     }
 
     @Test
@@ -105,6 +111,7 @@ class RoleServiceTest {
         service.delete(support.getId());
 
         verify(roles).delete(support);
+        verify(audit).recordAction(eq("ROLE_DELETED"), eq("role"), eq(support.getId()), any(), isNull(), isNull());
     }
 
     private static void assertConflict(Runnable action) {

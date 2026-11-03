@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.Amenity;
 import com.xelastay.catalog.AmenityRepository;
 import com.xelastay.catalog.AmenityService;
@@ -51,10 +53,12 @@ public class PropertyService {
     private final PropertyAmenityRepository propertyAmenities;
     private final AmenityRepository amenities;
     private final PropertyAssembler assembler;
+    private final AuditService audit;
 
     public PropertyService(PropertyRepository properties, PropertyCategoryRepository categories,
             LocationRepository locations, LocationService locationService, PropertyImageRepository images,
-            PropertyAmenityRepository propertyAmenities, AmenityRepository amenities, PropertyAssembler assembler) {
+            PropertyAmenityRepository propertyAmenities, AmenityRepository amenities, PropertyAssembler assembler,
+            AuditService audit) {
         this.properties = properties;
         this.categories = categories;
         this.locations = locations;
@@ -63,6 +67,7 @@ public class PropertyService {
         this.propertyAmenities = propertyAmenities;
         this.amenities = amenities;
         this.assembler = assembler;
+        this.audit = audit;
     }
 
     /** Solo PUBLISHED y no borrados. Orden por defecto: más recientes primero. */
@@ -126,16 +131,21 @@ public class PropertyService {
         Property property = Property.draft(hostId, category(request.categoryId(), null), location(request),
                 request.title().trim(), blankToNull(request.description()), request.pricePerNight(),
                 currency(request.currency()), request.capacity(), request.bedrooms(), request.bathrooms());
-        return assembler.detail(properties.save(property));
+        Property saved = properties.save(property);
+        audit.recordAction("PROPERTY_CREATED", "property", saved.getId(), null, snapshot(saved), hostId);
+        return assembler.detail(saved);
     }
 
     @Transactional
     public PropertyDetailResponse update(UUID userId, boolean admin, UUID id, PropertyRequest request) {
         Property property = requireEditable(userId, admin, id);
+        Map<String, Object> before = snapshot(property);
         property.update(category(request.categoryId(), property.getCategory()), location(request),
                 request.title().trim(), blankToNull(request.description()), request.pricePerNight(),
                 currency(request.currency()), request.capacity(), request.bedrooms(), request.bathrooms());
-        return assembler.detail(properties.save(property));
+        Property saved = properties.save(property);
+        audit.recordAction("PROPERTY_UPDATED", "property", id, before, snapshot(saved), property.getHostId());
+        return assembler.detail(saved);
     }
 
     /**
@@ -157,8 +167,12 @@ public class PropertyService {
         if (target == PropertyStatus.PUBLISHED && images.countByPropertyId(id) == 0) {
             throw error(HttpStatus.CONFLICT, "Para publicar, el alojamiento necesita al menos una imagen");
         }
+        PropertyStatus previous = property.getStatus();
         property.changeStatus(target);
-        return assembler.detail(properties.save(property));
+        Property saved = properties.save(property);
+        audit.recordAction("PROPERTY_STATUS_CHANGED", "property", id, Map.of("status", previous.name()),
+                Map.of("status", target.name()), property.getHostId());
+        return assembler.detail(saved);
     }
 
     /** Borrado lógico. No se permite con reservas PENDING o CONFIRMED que aún no terminan. */
@@ -170,12 +184,14 @@ public class PropertyService {
         }
         property.markDeleted();
         properties.save(property);
+        audit.recordAction("PROPERTY_DELETED", "property", id, snapshot(property),
+                Map.of("deletedAt", property.getDeletedAt().toString()), property.getHostId());
     }
 
     /** Reemplaza las amenidades. Una amenidad inactiva solo se acepta si el alojamiento ya la tenía. */
     @Transactional
     public List<AmenityResponse> replaceAmenities(UUID userId, boolean admin, UUID id, List<UUID> amenityIds) {
-        requireEditable(userId, admin, id);
+        Property property = requireEditable(userId, admin, id);
         Set<UUID> wanted = new LinkedHashSet<>(amenityIds);
         Map<UUID, Amenity> found = amenities.findAllById(wanted).stream()
                 .collect(Collectors.toMap(Amenity::getId, Function.identity()));
@@ -189,6 +205,8 @@ public class PropertyService {
         }
         propertyAmenities.deleteByPropertyId(id);
         propertyAmenities.saveAll(wanted.stream().map(amenityId -> PropertyAmenity.of(id, amenityId)).toList());
+        audit.recordAction("PROPERTY_AMENITIES_REPLACED", "property", id, Map.of("amenityIds", List.copyOf(current)),
+                Map.of("amenityIds", List.copyOf(wanted)), property.getHostId());
         return found.values().stream().map(AmenityService::toResponse)
                 .sorted(Comparator.comparing(AmenityResponse::name)).toList();
     }
@@ -227,6 +245,22 @@ public class PropertyService {
                     .orElseThrow(() -> error(HttpStatus.BAD_REQUEST, "La ubicación no existe"));
         }
         return locationService.createEntity(request.location());
+    }
+
+    /** Campos de negocio del alojamiento, para auditoría. */
+    static Map<String, Object> snapshot(Property property) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("title", property.getTitle());
+        values.put("description", property.getDescription());
+        values.put("categoryId", property.getCategory().getId());
+        values.put("locationId", property.getLocation().getId());
+        values.put("pricePerNight", property.getPricePerNight());
+        values.put("currency", property.getCurrency());
+        values.put("capacity", property.getCapacity());
+        values.put("bedrooms", property.getBedrooms());
+        values.put("bathrooms", property.getBathrooms());
+        values.put("status", property.getStatus().name());
+        return values;
     }
 
     /** "campo" o "campo,asc|desc" con campo en pricePerNight, createdAt o title. */

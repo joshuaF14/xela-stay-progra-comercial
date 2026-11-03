@@ -220,20 +220,9 @@ Respuesta (`PageResponse<PropertySummary>`):
 
 ### Para el frontend (`frontend/src/types/index.ts`)
 
-Los tipos actuales usan snake_case; la API responde en camelCase y con objetos anidados:
-
-| Tipo actual | API |
-|---|---|
-| `price_per_night` | `pricePerNight` |
-| `host_id` | `hostId` (en el detalle: `host.id` y `host.fullName`) |
-| `category_id` | `category.id` (y `category.name`) |
-| `location_id` | `location.id` |
-| `images[0].image_url` (tarjeta) | `coverImageUrl` |
-| `PropertyImage.image_url`, `display_order`, `is_cover` | `imageUrl`, `displayOrder`, `cover` |
-| `apiFetch<Property[]>('/api/v1/properties')` | `apiFetch<PageResponse<PropertySummary>>(…)` y usar `.content` |
-| — | `averageRating`, `reviewCount` (en lugar del 4.95 fijo) |
-
-`POST /bookings` también espera camelCase: `propertyId`, `checkIn`, `checkOut`, `guestsCount` (ver Reservas).
+Los tipos del frontend ya siguen estos contratos: `PageResponse<T>`, `PropertySummary` (tarjeta, con
+`coverImageUrl`, `averageRating` y `reviewCount`), `PropertyDetail` y `CreateBookingRequest` en camelCase. Al leer
+listados se usa `.content` de la página.
 
 ### Datos de demostración
 
@@ -263,6 +252,66 @@ powershell -ExecutionPolicy Bypass -File scripts\seed-demo.ps1 -BaseUrl http://l
 Si un paso falla, el script se detiene y muestra el `message` y los `details` del `ApiError`. Un alojamiento que quedó
 a medias (por ejemplo en `DRAFT` sin imágenes) se omite en la siguiente ejecución por su título: complétalo desde la
 API o bórralo con `DELETE /properties/{id}` y vuelve a ejecutar el script.
+
+---
+
+## Pagos simulados
+
+No hay pasarela real: el servidor aprueba el pago salvo que se pida simular un fallo. **El pago no cambia el estado
+de la reserva**: la confirma el anfitrión (decisión del equipo).
+
+| Método | Ruta | Quién | Respuesta |
+|---|---|---|---|
+| POST | `/bookings/{bookingId}/payments` | huésped de la reserva | `201` pago (`APPROVED` o `REJECTED`) |
+| GET | `/bookings/{bookingId}/payments` | huésped, anfitrión o ADMIN | `200` lista, más recientes primero |
+| GET | `/me/payments?page=&size=` | autenticado | `200` página de mis pagos como huésped |
+| GET | `/payments?status=&from=&to=&page=&size=` | ADMIN | `200` página, más recientes primero |
+| PATCH | `/payments/{id}/refund` | ADMIN | `200` pago en `REFUNDED` |
+
+### POST /bookings/{bookingId}/payments
+
+```json
+{ "paymentMethod": "CARD", "simulateFailure": false }
+```
+
+- `paymentMethod`: `CARD`, `TRANSFER` o `CASH` (obligatorio). `simulateFailure` es opcional; con `true` el pago queda
+  `REJECTED` (sirve para probar el flujo de error) y también responde `201`.
+- `amount` y `currency` los toma el servidor del total de la reserva; no se envían.
+- La reserva se bloquea mientras se paga: dos pagos simultáneos no pueden quedar aprobados.
+
+| Error | Caso |
+|---|---|
+| `400` | falta `paymentMethod` o tiene otro valor |
+| `403` | quien paga no es el huésped de la reserva |
+| `404` | la reserva no existe |
+| `409` | la reserva no está `PENDING` ni `CONFIRMED`, o ya tiene un pago `APPROVED` |
+
+Respuesta (Payment):
+
+```json
+{
+  "id": "…", "bookingId": "…", "amount": 700.00, "currency": "GTQ",
+  "paymentMethod": "CARD", "status": "APPROVED", "transactionReference": "SIM-5b1c…",
+  "paidAt": "2026-11-04T15:30:00Z", "createdAt": "2026-11-04T15:30:00Z"
+}
+```
+
+- `paidAt` es `null` en un pago `REJECTED`.
+- Estados: `PENDING` (reservado, no lo usa la simulación), `APPROVED`, `REJECTED`, `REFUNDED`.
+- `GET /payments`: `from` y `to` son días `yyyy-MM-dd` en hora de Guatemala, ambos incluidos (`400` si `from > to`).
+- `PATCH /payments/{id}/refund`: solo un pago `APPROVED` (`409` en otro estado). La reserva no cambia.
+
+---
+
+## Auditoría
+
+| Método | Ruta | Quién | Respuesta |
+|---|---|---|---|
+| GET | `/audit-logs?entityType=&entityId=&actorId=&source=&from=&to=&page=&size=` | ADMIN | `200` página, más recientes primero |
+
+Registro: `{id, actorId, actorName, action, entityType, entityId, oldValues, newValues, ipAddress, userAgent, source,
+createdAt}`. `source`: `USER`, `ADMIN`, `AI` o `SYSTEM`. Qué operaciones se registran y con qué valores:
+[AUDITORIA.md](../architecture/AUDITORIA.md).
 
 ---
 

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.dto.AmenityResponse;
 import com.xelastay.catalog.dto.CatalogItemRequest;
 
@@ -29,11 +30,14 @@ class AmenityServiceTest {
     @Mock
     private AmenityRepository amenities;
 
+    @Mock
+    private AuditService audit;
+
     private AmenityService service;
 
     @BeforeEach
     void setUp() {
-        service = new AmenityService(amenities);
+        service = new AmenityService(amenities, audit);
     }
 
     @Test

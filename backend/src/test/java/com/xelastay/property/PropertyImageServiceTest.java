@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.property.dto.PropertyImageRequest;
 import com.xelastay.property.dto.PropertyImageResponse;
 import com.xelastay.property.dto.PropertyImageUpdateRequest;
@@ -33,13 +34,16 @@ class PropertyImageServiceTest {
     @Mock
     private PropertyImageRepository images;
 
+    @Mock
+    private AuditService audit;
+
     private final UUID hostId = UUID.randomUUID();
     private PropertyImageService service;
     private Property property;
 
     @BeforeEach
     void setUp() {
-        service = new PropertyImageService(propertyService, images);
+        service = new PropertyImageService(propertyService, images, audit);
         property = PropertyFixtures.property(hostId, PropertyStatus.DRAFT);
         when(propertyService.requireEditable(hostId, false, property.getId())).thenReturn(property);
     }

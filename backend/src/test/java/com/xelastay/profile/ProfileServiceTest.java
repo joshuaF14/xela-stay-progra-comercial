@@ -8,9 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.profile.dto.ProfileResponse;
 import com.xelastay.profile.dto.UpdateMeRequest;
 
@@ -37,6 +39,9 @@ class ProfileServiceTest {
     @Mock
     private ProfileRoleRepository profileRoles;
 
+    @Mock
+    private AuditService audit;
+
     @Captor
     private ArgumentCaptor<Iterable<ProfileRole>> assignments;
 
@@ -50,7 +55,7 @@ class ProfileServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProfileService(profiles, roles, profileRoles);
+        service = new ProfileService(profiles, roles, profileRoles, audit);
         profile = Profile.of(profileId, "Ana", "ana@correo.com", ProfileStatus.ACTIVE);
     }
 
@@ -113,6 +118,8 @@ class ProfileServiceTest {
         ProfileResponse response = service.updateStatus(adminId, profileId, ProfileStatus.SUSPENDED);
 
         assertThat(response.status()).isEqualTo(ProfileStatus.SUSPENDED);
+        verify(audit).recordAction("PROFILE_STATUS_CHANGED", "profile", profileId, Map.of("status", "ACTIVE"),
+                Map.of("status", "SUSPENDED"), profileId);
     }
 
     @Test
