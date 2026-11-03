@@ -1,256 +1,272 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { PropertyDetail as PropertyDetailType, CreateBookingRequest, ReviewResponse } from '../types';
 import { apiFetch } from '../api/client';
 import { supabase } from '../services/supabase';
-import { Calendar, Users, Bed, Bath, MapPin, ShieldCheck, CheckCircle2, Star, AlertCircle, Info } from 'lucide-react';
+import ChatModal from '../components/ChatModal';
+import {
+    MapPin,
+    Users,
+    Bed,
+    Bath,
+    MessageSquare,
+    AlertCircle,
+    CheckCircle2,
+    Star,
+    User
+} from 'lucide-react';
+
+interface ReviewItem {
+    id: string;
+    reviewerName?: string;
+    authorName?: string;
+    rating: number;
+    comment?: string;
+    createdAt: string;
+}
 
 export default function PropertyDetail() {
     const { id } = useParams<{ id: string }>();
-    const [property, setProperty] = useState<PropertyDetailType | null>(null);
+    const navigate = useNavigate();
+
+    const [property, setProperty] = useState<any>(null);
+    const [reviews, setReviews] = useState<ReviewItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
     const [checkIn, setCheckIn] = useState('');
     const [checkOut, setCheckOut] = useState('');
-    const [guestsCount, setGuestsCount] = useState(1);
-    const [loading, setLoading] = useState(false);
-    const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    const [reviews, setReviews] = useState<ReviewResponse[]>([]);
-    const navigate = useNavigate();
+    const [bookingLoading, setBookingLoading] = useState(false);
+    const [bookingSuccess, setBookingSuccess] = useState(false);
+
+    const [showChat, setShowChat] = useState(false);
 
     useEffect(() => {
         if (!id) return;
+        setLoading(true);
 
-        // 1. Cargar el alojamiento completo
-        apiFetch<PropertyDetailType>(`/api/v1/properties/${id}`)
-            .then((data) => setProperty(data))
-            .catch((err: any) => setErrorMsg(err.message || 'No se pudo cargar la estancia solicitada.'));
-
-        // 2. Cargar reseñas tolerante a PageResponse o arreglo
-        apiFetch<any>(`/api/v1/properties/${id}/reviews`)
+        // 1. Cargar datos del alojamiento
+        apiFetch<any>(`/api/v1/properties/${id}`)
             .then((data) => {
-                if (Array.isArray(data)) {
-                    setReviews(data);
-                } else if (data && Array.isArray(data.content)) {
-                    setReviews(data.content);
-                } else {
-                    setReviews([]);
+                setProperty(data);
+                if (data.reviews && Array.isArray(data.reviews)) {
+                    setReviews(data.reviews);
                 }
             })
-            .catch(() => setReviews([]));
+            .catch((err) => setErrorMsg(err.message || 'Error al cargar la propiedad'))
+            .finally(() => setLoading(false));
+
+        // 2. Cargar reseñas paginadas (según Gio: /properties/{id}/reviews)
+        apiFetch<any>(`/api/v1/properties/${id}/reviews`)
+            .then((data) => {
+                const list = Array.isArray(data) ? data : data?.content || [];
+                setReviews(list);
+            })
+            .catch(() => { });
     }, [id]);
 
     const handleBooking = async (e: React.FormEvent) => {
         e.preventDefault();
-        setErrorMsg(null);
-
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-            alert('Debes iniciar sesión con tu cuenta para reservar.');
+            alert('Debes iniciar sesión para reservar.');
             navigate('/login');
             return;
         }
 
-        if (new Date(checkOut) <= new Date(checkIn)) {
-            setErrorMsg('La fecha de salida debe ser posterior a la fecha de entrada.');
-            return;
-        }
-
-        setLoading(true);
-
-        const payload: CreateBookingRequest = {
-            propertyId: property!.id,
-            checkIn,
-            checkOut,
-            guestsCount: Number(guestsCount),
-        };
-
+        setBookingLoading(true);
         try {
             await apiFetch('/api/v1/bookings', {
                 method: 'POST',
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    propertyId: id,
+                    checkInDate: checkIn,
+                    checkOutDate: checkOut,
+                }),
             });
-            setSuccess(true);
+            setBookingSuccess(true);
+            setTimeout(() => navigate('/my-bookings'), 1500);
         } catch (err: any) {
-            setErrorMsg(err.message || 'Error al procesar la reservación en el servidor.');
+            alert(err.message || 'Error al procesar la reserva');
         } finally {
-            setLoading(false);
+            setBookingLoading(false);
         }
     };
 
-    if (errorMsg && !property) {
+    if (loading) return <div className="p-12 text-center text-xs text-[#736E65]">Cargando estancia...</div>;
+    if (errorMsg || !property) {
         return (
-            <div className="p-12 text-center text-xs text-[#C84937] bg-[#FEEAE6] rounded-3xl border border-[#F5C2B8] max-w-lg mx-auto space-y-2">
-                <AlertCircle className="w-8 h-8 mx-auto text-[#E05A47]" />
-                <h3 className="font-bold text-sm">No se pudo cargar el alojamiento</h3>
-                <p>{errorMsg}</p>
+            <div className="max-w-xl mx-auto p-8 bg-white border border-[#E8E2D8] rounded-3xl text-center space-y-3">
+                <AlertCircle className="w-8 h-8 text-[#E05A47] mx-auto" />
+                <p className="text-xs text-[#736E65]">{errorMsg || 'Alojamiento no encontrado.'}</p>
             </div>
         );
     }
 
-    if (!property) {
-        return <div className="p-12 text-center text-[#736E65] text-xs">Cargando detalles de la estancia...</div>;
-    }
-
-    const coverPhoto = property.images?.find((img) => img.isCover)?.imageUrl ||
+    const coverImage =
+        property.images?.find((img: any) => img.isCover)?.imageUrl ||
         property.images?.[0]?.imageUrl ||
-        'https://via.placeholder.com/900x500?text=Xela+Stay';
+        property.imageUrl ||
+        'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb';
 
-    const safeReviews = Array.isArray(reviews) ? reviews : [];
+    // Gio indicó que el promedio y total vienen en averageRating y reviewCount
+    const avg = property.averageRating || property.rating || null;
+    const count = property.reviewCount ?? reviews.length;
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 pb-12 animate-fadeIn">
-            {/* Portada */}
-            <div className="rounded-3xl overflow-hidden border border-[#E8E2D8] shadow-sm max-h-[460px] bg-slate-100">
-                <img src={coverPhoto} alt={property.title} className="w-full h-full object-cover" />
+        <div className="max-w-5xl mx-auto space-y-8 pb-16 animate-fadeIn">
+            {/* Portada y Título */}
+            <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h1 className="text-3xl font-serif font-bold text-[#1E1C1A]">{property.title}</h1>
+                    {avg && (
+                        <div className="flex items-center gap-1.5 bg-[#FAF7F2] border border-[#E8E2D8] px-3 py-1.5 rounded-xl text-xs font-bold text-[#1E1C1A]">
+                            <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                            <span>{avg}</span>
+                            <span className="text-[#736E65] font-normal">({count} {count === 1 ? 'reseña' : 'reseñas'})</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-[#736E65]">
+                    <MapPin className="w-4 h-4 text-[#E05A47]" />
+                    <span>{property.location?.address || property.address || 'Quetzaltenango'}, {property.location?.municipality || 'Quetzaltenango'}</span>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-                <div className="md:col-span-8 space-y-6">
-                    <div>
-                        <div className="flex items-center gap-1.5 text-[#E05A47] text-xs font-bold uppercase tracking-wider mb-1">
-                            <MapPin className="w-4 h-4" />
-                            {property.location?.address || property.location?.municipality || 'Quetzaltenango'}
+            <div className="w-full h-80 sm:h-96 rounded-3xl overflow-hidden shadow-sm border border-[#E8E2D8]">
+                <img src={coverImage} alt={property.title} className="w-full h-full object-cover" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 space-y-4 shadow-sm">
+                        <h2 className="text-lg font-serif font-bold text-[#1E1C1A]">Acerca de este lugar</h2>
+                        <p className="text-xs text-[#5C574F] leading-relaxed whitespace-pre-line">{property.description}</p>
+
+                        <div className="flex flex-wrap gap-4 pt-4 border-t border-[#F0EBE1] text-xs text-[#5C574F]">
+                            <div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-[#E05A47]" /> {property.capacity || 2} personas</div>
+                            <div className="flex items-center gap-1.5"><Bed className="w-4 h-4 text-[#E05A47]" /> {property.bedrooms || 1} habitaciones</div>
+                            <div className="flex items-center gap-1.5"><Bath className="w-4 h-4 text-[#E05A47]" /> {property.bathrooms || 1} baños</div>
                         </div>
-                        <h1 className="text-3xl font-serif font-bold text-[#1E1C1A]">{property.title}</h1>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 py-4 border-y border-[#E8E2D8] text-[#1E1C1A] text-xs">
-                        <div className="flex items-center gap-2"><Users className="w-4 h-4 text-[#E05A47]" /> {property.capacity} Huéspedes</div>
-                        <div className="flex items-center gap-2"><Bed className="w-4 h-4 text-[#E05A47]" /> {property.bedrooms} Habitaciones</div>
-                        <div className="flex items-center gap-2"><Bath className="w-4 h-4 text-[#E05A47]" /> {property.bathrooms} Baños</div>
+                    <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm flex items-center justify-between">
+                        <div>
+                            <h3 className="font-serif font-bold text-sm text-[#1E1C1A]">¿Tienes dudas sobre la estancia?</h3>
+                            <p className="text-[11px] text-[#736E65] mt-0.5">Contacta directamente al anfitrión para coordinar cualquier detalle.</p>
+                        </div>
+                        <button
+                            onClick={() => setShowChat(true)}
+                            className="bg-[#FAF7F2] border border-[#E05A47] text-[#E05A47] hover:bg-[#FEEAE6] px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+                        >
+                            <MessageSquare className="w-3.5 h-3.5" /> Contactar al Anfitrión
+                        </button>
                     </div>
 
-                    <div>
-                        <h3 className="text-base font-serif font-bold text-[#1E1C1A] mb-2">Descripción del alojamiento</h3>
-                        <p className="text-[#5C574F] text-xs leading-relaxed whitespace-pre-line">{property.description}</p>
-                    </div>
-
-                    <div className="bg-[#FAF7F2] border border-[#E8E2D8] p-4 rounded-2xl flex items-center gap-3 text-xs text-[#736E65]">
-                        <ShieldCheck className="w-5 h-5 text-[#E05A47] shrink-0" />
-                        <span>Reserva procesada mediante cola FIFO en RabbitMQ para garantizar disponibilidad sin sobreventa.</span>
-                    </div>
-
-                    {/* Sección de Reseñas */}
-                    <div className="space-y-4 pt-6 border-t border-[#E8E2D8]">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-serif font-bold text-[#1E1C1A] flex items-center gap-2">
-                                <Star className="w-5 h-5 fill-[#E89E28] text-[#E89E28]" />
-                                Reseñas de huéspedes ({safeReviews.length})
+                    {/* SECCIÓN DE RESEÑAS */}
+                    <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between border-b border-[#F0EBE1] pb-3">
+                            <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
+                                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                                Reseñas de Huéspedes
                             </h3>
-                        </div>
-
-                        {/* Aviso informativo de regla de negocio */}
-                        <div className="bg-[#FAF7F2] border border-[#E8E2D8] p-3.5 rounded-2xl flex items-center gap-2.5 text-xs text-[#736E65]">
-                            <Info className="w-4 h-4 text-[#E05A47] shrink-0" />
-                            <span>
-                                Para calificar una estancia debes haber completado tu viaje. Puedes dejar tu reseña desde la pestaña{' '}
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/my-bookings')}
-                                    className="font-bold text-[#E05A47] underline hover:text-[#C84937]"
-                                >
-                                    Mis Reservaciones
-                                </button>
-                                .
+                            <span className="text-xs text-[#736E65]">
+                                {reviews.length} {reviews.length === 1 ? 'opinión' : 'opiniones'}
                             </span>
                         </div>
 
-                        {safeReviews.length === 0 ? (
-                            <p className="text-xs text-[#736E65]">Esta estancia aún no cuenta con reseñas publicadas.</p>
+                        {reviews.length === 0 ? (
+                            <p className="text-xs text-[#736E65] py-4 text-center">
+                                Aún no hay reseñas registradas para este alojamiento.
+                            </p>
                         ) : (
-                            <div className="space-y-3">
-                                {safeReviews.map((rev) => (
-                                    <div key={rev.id} className="bg-white border border-[#E8E2D8] rounded-2xl p-4 shadow-sm space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs font-bold text-[#1E1C1A]">{rev.reviewerName || 'Huésped verificado'}</span>
-                                            <span className="text-xs text-[#E89E28]">{'★'.repeat(rev.rating)}</span>
+                            <div className="space-y-3.5 pt-1">
+                                {reviews.map((r, idx) => {
+                                    const author = r.reviewerName || r.authorName || 'Huésped verificado';
+                                    const starsCount = r.rating || 5;
+                                    const commentText = r.comment || 'Excelente estancia.';
+
+                                    return (
+                                        <div key={r.id || idx} className="p-3.5 bg-[#FAF7F2] border border-[#E8E2D8] rounded-2xl space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-7 h-7 rounded-full bg-[#E8E2D8] flex items-center justify-center text-[#5C574F]">
+                                                        <User className="w-3.5 h-3.5" />
+                                                    </div>
+                                                    <span className="font-semibold text-xs text-[#1E1C1A]">{author}</span>
+                                                </div>
+                                                <div className="flex items-center gap-0.5">
+                                                    {[...Array(5)].map((_, i) => (
+                                                        <Star
+                                                            key={i}
+                                                            className={`w-3.5 h-3.5 ${i < starsCount ? 'fill-amber-400 text-amber-400' : 'text-zinc-300'
+                                                                }`}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-[#5C574F] leading-relaxed pl-9">{commentText}</p>
                                         </div>
-                                        <p className="text-xs text-[#5C574F]">{rev.comment}</p>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Tarjeta lateral para reservar */}
-                <div className="md:col-span-4">
-                    <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm sticky top-24 space-y-5">
-                        <div className="flex items-baseline justify-between border-b border-[#F0EBE1] pb-4">
-                            <span className="text-2xl font-serif font-bold text-[#1E1C1A]">
-                                {property.currency} {property.pricePerNight}
-                            </span>
-                            <span className="text-xs text-[#736E65]">por noche</span>
+                {/* Panel lateral de Reserva */}
+                <div className="lg:col-span-1">
+                    <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-5 sticky top-24">
+                        <div className="flex items-baseline justify-between border-b border-[#F0EBE1] pb-3">
+                            <span className="text-2xl font-bold font-serif text-[#1E1C1A]">Q{property.pricePerNight || property.price}</span>
+                            <span className="text-xs text-[#736E65]">/ noche</span>
                         </div>
 
-                        {success ? (
-                            <div className="bg-[#F4F9F4] border border-[#CCE2CC] p-4 rounded-2xl text-center space-y-2">
-                                <CheckCircle2 className="w-8 h-8 text-[#3A833A] mx-auto" />
-                                <h4 className="text-sm font-bold text-[#1E1C1A]">¡Solicitud enviada!</h4>
-                                <p className="text-xs text-[#5C574F]">Tu reservación ha sido registrada en estado PENDING. Consúltala en "Mis Reservas".</p>
+                        {bookingSuccess ? (
+                            <div className="bg-[#F4F9F4] border border-[#CCE2CC] text-[#3A833A] p-4 rounded-2xl flex items-center gap-2 text-xs">
+                                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                <span>¡Reserva enviada! Redirigiendo a tus reservaciones...</span>
                             </div>
                         ) : (
                             <form onSubmit={handleBooking} className="space-y-4">
-                                {errorMsg && (
-                                    <div className="bg-[#FEEAE6] border border-[#F5C2B8] text-[#C84937] text-xs p-3 rounded-xl">
-                                        {errorMsg}
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-2 gap-2 bg-[#FAF7F2] p-2.5 rounded-2xl border border-[#E8E2D8]">
-                                    <div>
-                                        <label className="block text-[10px] font-bold uppercase text-[#736E65] mb-1 flex items-center gap-1">
-                                            <Calendar className="w-3 h-3 text-[#E05A47]" /> Entrada
-                                        </label>
-                                        <input
-                                            type="date"
-                                            required
-                                            value={checkIn}
-                                            onChange={(e) => setCheckIn(e.target.value)}
-                                            className="w-full bg-transparent text-xs text-[#1E1C1A] focus:outline-none"
-                                        />
-                                    </div>
-                                    <div className="border-l border-[#E8E2D8] pl-2">
-                                        <label className="block text-[10px] font-bold uppercase text-[#736E65] mb-1 flex items-center gap-1">
-                                            <Calendar className="w-3 h-3 text-[#E05A47]" /> Salida
-                                        </label>
-                                        <input
-                                            type="date"
-                                            required
-                                            value={checkOut}
-                                            onChange={(e) => setCheckOut(e.target.value)}
-                                            className="w-full bg-transparent text-xs text-[#1E1C1A] focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-
                                 <div>
-                                    <label className="block text-xs font-semibold text-[#1E1C1A] mb-1.5 flex items-center gap-1">
-                                        <Users className="w-3.5 h-3.5 text-[#E05A47]" /> Huéspedes
-                                    </label>
+                                    <label className="block text-[11px] font-semibold text-[#1E1C1A] mb-1">Entrada</label>
                                     <input
-                                        type="number"
-                                        min={1}
-                                        max={property.capacity}
+                                        type="date"
                                         required
-                                        value={guestsCount}
-                                        onChange={(e) => setGuestsCount(Number(e.target.value))}
-                                        className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3.5 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                                        value={checkIn}
+                                        onChange={(e) => setCheckIn(e.target.value)}
+                                        className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
                                     />
                                 </div>
-
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-[#1E1C1A] mb-1">Salida</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={checkOut}
+                                        onChange={(e) => setCheckOut(e.target.value)}
+                                        className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                                    />
+                                </div>
                                 <button
                                     type="submit"
-                                    disabled={loading}
-                                    className="w-full bg-[#E05A47] hover:bg-[#C84937] text-white font-semibold py-3 rounded-xl transition-all shadow-sm disabled:opacity-50 text-xs"
+                                    disabled={bookingLoading}
+                                    className="w-full bg-[#E05A47] hover:bg-[#C84937] text-white py-3 rounded-xl font-bold text-xs transition shadow-sm disabled:opacity-50"
                                 >
-                                    {loading ? 'Procesando...' : 'Reservar Alojamiento'}
+                                    {bookingLoading ? 'Enviando solicitud...' : 'Solicitar Reserva'}
                                 </button>
                             </form>
                         )}
                     </div>
                 </div>
             </div>
+
+            <ChatModal
+                isOpen={showChat}
+                onClose={() => setShowChat(false)}
+                propertyId={id}
+            />
         </div>
     );
 }
