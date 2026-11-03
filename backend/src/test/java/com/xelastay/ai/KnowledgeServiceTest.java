@@ -4,10 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
@@ -39,9 +37,6 @@ class KnowledgeServiceTest {
     private KnowledgeChunkRepository chunks;
 
     @Mock
-    private AdminGuard adminGuard;
-
-    @Mock
     private AiLogWriter logWriter;
 
     @Captor
@@ -54,7 +49,7 @@ class KnowledgeServiceTest {
     void setUp() {
         AiProperties properties = new AiProperties("", "gemini-3.8-flash",
                 "https://generativelanguage.googleapis.com/v1beta", Duration.ofSeconds(30), 2048, 5, 3, 800, 100);
-        service = new KnowledgeService(documents, chunks, adminGuard, logWriter, properties);
+        service = new KnowledgeService(documents, chunks, logWriter, properties);
     }
 
     @Test
@@ -84,17 +79,6 @@ class KnowledgeServiceTest {
         });
         verify(logWriter).audit(eq(adminId), eq("AI_DOCUMENT_INGESTED"), eq("knowledge_document"), eq(documentId),
                 any(), eq("ADMIN"), eq("127.0.0.1"), eq("curl"));
-    }
-
-    @Test
-    void onlyAdminsCanIngest() {
-        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un administrador"))
-                .when(adminGuard).requireAdmin(adminId);
-
-        assertThatThrownBy(() -> service.ingest(adminId, "FAQ", "FAQ", null, "texto", "127.0.0.1", null))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
-        verifyNoInteractions(documents, chunks, logWriter);
     }
 
     @Test

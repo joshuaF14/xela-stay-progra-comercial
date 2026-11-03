@@ -113,5 +113,5 @@ Diferencias anotadas:
 | 4 | Las entidades usan `Instant` para `TIMESTAMPTZ` en lugar de `OffsetDateTime`. | todas | Equivalente para Hibernate y para el JSON (ISO-8601 UTC). Los módulos nuevos usan `OffsetDateTime`. |
 | 5 | `size` por defecto 50 en los mensajes del chat. | chat | Aceptado y documentado en ENDPOINTS.md. |
 | 6 | Códigos `502`/`503`/`504` cuando falla el proveedor de IA. | IA | Aceptado: errores del proveedor externo. |
-| 7 | El rol ADMIN se valida con `AdminGuard` (SQL nativo). | IA | Provisional: se reemplaza por `@PreAuthorize("hasRole('ADMIN')")` al publicar los roles. |
+| 7 | ~~El rol ADMIN se validaba con `AdminGuard` (SQL nativo).~~ | IA | Resuelto: `AdminGuard` se eliminó y `AiController` usa `@PreAuthorize("hasRole('ADMIN')")`. |
 | 8 | Pruebas de controlador con `@SpringBootTest` + MockMvc, no `@WebMvcTest`. | todas | Es el patrón vigente del repositorio; los módulos nuevos lo siguen. |

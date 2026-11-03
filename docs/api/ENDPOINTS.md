@@ -168,8 +168,7 @@ contador de no leídas. Tipos actuales (los crea el consumidor de RabbitMQ): `BO
 
 Divide el texto en fragmentos de ~800 palabras con 100 de solape y guarda `knowledge_documents` (estado `INDEXED`) y
 `knowledge_chunks`. Respuesta: `{documentId, title, documentType, source, status, chunkCount}`. Queda en
-`audit_logs` con `source = 'ADMIN'`. Mientras no existan los roles con `@PreAuthorize`, el rol ADMIN se valida en
-`profile_roles`/`roles`.
+`audit_logs` con `source = 'ADMIN'`. El rol ADMIN se exige con `@PreAuthorize("hasRole('ADMIN')")` (`403` sin él).
 
 ### Chat
 

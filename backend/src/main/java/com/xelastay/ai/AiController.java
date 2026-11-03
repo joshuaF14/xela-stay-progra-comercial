@@ -16,6 +16,7 @@ import com.xelastay.security.CurrentUser;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,6 +43,7 @@ public class AiController {
     /** Ingesta en JSON (solo ADMIN). */
     @PostMapping(value = "/documents", consumes = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public IngestResponse ingest(@Valid @RequestBody IngestDocumentRequest request, HttpServletRequest http) {
         return knowledgeService.ingest(currentUser.requireId(), request.title(), request.documentType(),
                 request.source(), request.content(), http.getRemoteAddr(), http.getHeader(HttpHeaders.USER_AGENT));
@@ -50,6 +52,7 @@ public class AiController {
     /** Ingesta de un archivo .md o .txt en UTF-8 (solo ADMIN). Sin título se usa el nombre del archivo. */
     @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public IngestResponse upload(@RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String title,
             @RequestParam String documentType,

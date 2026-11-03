@@ -25,6 +25,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -84,10 +85,19 @@ class AiControllerTest {
         when(knowledgeService.ingest(eq(userId), eq("FAQ"), eq("FAQ"), isNull(), eq("Texto del documento"), any(),
                 any())).thenReturn(response("FAQ"));
 
-        mockMvc.perform(post("/api/v1/ai/documents").with(user()).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/ai/documents").with(admin()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"FAQ\",\"documentType\":\"FAQ\",\"content\":\"Texto del documento\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.chunkCount").value(1));
+    }
+
+    @Test
+    void ingestWithoutAdminRoleIs403() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/documents").with(user()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"FAQ\",\"documentType\":\"FAQ\",\"content\":\"Texto del documento\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+        verifyNoInteractions(knowledgeService);
     }
 
     @Test
@@ -98,7 +108,7 @@ class AiControllerTest {
                 eq("archivo:preguntas-frecuentes.md"), eq("# Preguntas\nHola"), any(), any()))
                 .thenReturn(response("preguntas-frecuentes"));
 
-        mockMvc.perform(multipart("/api/v1/ai/documents").file(file).param("documentType", "FAQ").with(user()))
+        mockMvc.perform(multipart("/api/v1/ai/documents").file(file).param("documentType", "FAQ").with(admin()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("preguntas-frecuentes"));
     }
@@ -107,7 +117,7 @@ class AiControllerTest {
     void pdfUploadIsRejected() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "manual.pdf", "application/pdf", new byte[] {1, 2});
 
-        mockMvc.perform(multipart("/api/v1/ai/documents").file(file).param("documentType", "FAQ").with(user()))
+        mockMvc.perform(multipart("/api/v1/ai/documents").file(file).param("documentType", "FAQ").with(admin()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Solo se aceptan archivos .md o .txt"));
         verifyNoInteractions(knowledgeService);
@@ -115,6 +125,11 @@ class AiControllerTest {
 
     private RequestPostProcessor user() {
         return jwt().jwt(token -> token.subject(userId.toString()));
+    }
+
+    private RequestPostProcessor admin() {
+        return jwt().jwt(token -> token.subject(userId.toString()))
+                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
     private IngestResponse response(String title) {
