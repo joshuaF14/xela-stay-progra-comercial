@@ -12,10 +12,12 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.xelastay.audit.AuditService;
+import com.xelastay.audit.AuditSource;
 import com.xelastay.booking.dto.BookingResponse;
 import com.xelastay.booking.dto.BookingResult;
 import com.xelastay.booking.dto.CreateBookingRequest;
@@ -256,6 +258,47 @@ class BookingServiceTest {
 
         booking.confirm();
         assertThat(service.complete(hostId, booking.getId()).status()).isEqualTo(BookingStatus.COMPLETED);
+    }
+
+    @Test
+    void expiringAPendingBookingCancelsItAsTheSystem() {
+        Booking booking = booking();
+        givenLocked(booking);
+
+        boolean expired = service.expire(booking.getId(), "Venció: el anfitrión no respondió a tiempo");
+
+        assertThat(expired).isTrue();
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        assertThat(booking.getCancellationReason()).isEqualTo("Venció: el anfitrión no respondió a tiempo");
+        // Sale como cancelación (mismas notificaciones), con su propia clave de evento.
+        ArgumentCaptor<BookingEventPayload> payload = ArgumentCaptor.forClass(BookingEventPayload.class);
+        verify(outbox).enqueue(eq("booking:" + booking.getId() + ":EXPIRED"), eq("booking"), eq(booking.getId()),
+                eq("booking.cancelled"), payload.capture());
+        assertThat(payload.getValue().status()).isEqualTo("CANCELLED");
+        assertThat(payload.getValue().reason()).isEqualTo("Venció: el anfitrión no respondió a tiempo");
+        verify(audit).record(eq(null), eq("BOOKING_EXPIRED"), eq("booking"), eq(booking.getId()),
+                eq(Map.of("status", "PENDING")), any(), eq(AuditSource.SYSTEM));
+        verify(audit, never()).recordUserAction(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void bookingAnsweredMeanwhileIsNotExpired() {
+        Booking booking = booking();
+        booking.confirm();
+        when(bookings.findByIdForUpdate(booking.getId())).thenReturn(Optional.of(booking));
+
+        assertThat(service.expire(booking.getId(), "Venció")).isFalse();
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        verifyNoInteractions(outbox, audit);
+    }
+
+    @Test
+    void expiringAMissingBookingIs404() {
+        UUID bookingId = UUID.randomUUID();
+        when(bookings.findByIdForUpdate(bookingId)).thenReturn(Optional.empty());
+
+        assertStatus(() -> service.expire(bookingId, "Venció"), HttpStatus.NOT_FOUND);
     }
 
     @Test
