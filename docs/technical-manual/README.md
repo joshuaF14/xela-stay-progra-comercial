@@ -13,7 +13,7 @@ suya.
 | 6 | Reservas, eventos, notificaciones, reseñas, chat e IA | [RESERVAS-MENSAJERIA-IA](RESERVAS-MENSAJERIA-IA.md) |
 | 7 | Flujo outbox → RabbitMQ → notificaciones | [EVENTOS](../architecture/EVENTOS.md) |
 | 8 | Base de conocimiento del agente de IA | [docs/ai](../ai/README.md) |
-| 9 | Despliegue | [DESPLIEGUE](DESPLIEGUE.md) |
+| 9 | Despliegue en producción (Render, Supabase, CloudAMQP) y verificación | [DESPLIEGUE](DESPLIEGUE.md), [render.yaml](../../render.yaml) y [smoke-prod.ps1](../../scripts/smoke-prod.ps1) |
 | 10 | Frontend | Pendiente |
 | 11 | Reportes y Power BI | Pendiente |
 | 12 | Decisiones abiertas | [PENDIENTES](../decisions/PENDIENTES.md) |
