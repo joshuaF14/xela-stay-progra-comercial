@@ -82,7 +82,7 @@ public class AmenityService {
         return amenities.findById(id).orElseThrow(AmenityService::notFound);
     }
 
-    static AmenityResponse toResponse(Amenity amenity) {
+    public static AmenityResponse toResponse(Amenity amenity) {
         return new AmenityResponse(amenity.getId(), amenity.getName(), amenity.getDescription(), amenity.isActive());
     }
 
