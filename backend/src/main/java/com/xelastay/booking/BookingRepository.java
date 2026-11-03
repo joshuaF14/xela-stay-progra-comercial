@@ -1,5 +1,6 @@
 package com.xelastay.booking;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -43,6 +44,19 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findOverlapping(@Param("propertyId") UUID propertyId,
             @Param("statuses") Collection<BookingStatus> statuses,
             @Param("checkIn") LocalDate checkIn, @Param("checkOut") LocalDate checkOut);
+
+    /**
+     * Reservas {@code status} creadas antes de {@code createdBefore} o cuya entrada ya llegó
+     * ({@code checkIn <= today}), de la más antigua a la más nueva. Las usa {@link PendingBookingExpirer};
+     * {@code limit} acota cada ronda.
+     */
+    @Query("""
+            select b.id from Booking b
+            where b.status = :status and (b.createdAt < :createdBefore or b.checkIn <= :today)
+            order by b.createdAt
+            """)
+    List<UUID> findIdsToExpire(@Param("status") BookingStatus status, @Param("createdBefore") Instant createdBefore,
+            @Param("today") LocalDate today, Pageable limit);
 
     Page<Booking> findByGuestId(UUID guestId, Pageable pageable);
 

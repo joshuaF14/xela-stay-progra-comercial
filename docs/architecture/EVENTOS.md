@@ -51,6 +51,7 @@ algo que sí se guardó.
 | `booking.confirmed` | `booking:<id>:CONFIRMED` | `PATCH …/confirm` | `BOOKING_CONFIRMED` |
 | `booking.rejected` | `booking:<id>:REJECTED` | `PATCH …/reject` | `BOOKING_REJECTED` |
 | `booking.cancelled` | `booking:<id>:CANCELLED` | `PATCH …/cancel` | `BOOKING_CANCELLED` |
+| `booking.cancelled` | `booking:<id>:EXPIRED` | vencimiento automático de una reserva `PENDING` | `BOOKING_CANCELLED` |
 | `booking.completed` | `booking:<id>:COMPLETED` | `PATCH …/complete` | `BOOKING_COMPLETED` |
 
 `event_key` es único en `outbox_events`: cada evento concreto se registra una sola vez.
