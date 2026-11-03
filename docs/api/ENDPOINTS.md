@@ -1,7 +1,8 @@
 # Endpoints de la API
 
-Contratos de los módulos de perfiles, catálogo y alojamientos (responsable: Joshua) y de reservas, disponibilidad,
-reseñas, chat, notificaciones e IA (responsable: Giovanni).
+Contratos de los módulos de perfiles, catálogo y alojamientos (responsable: Joshua), de reservas, disponibilidad,
+reseñas, chat, notificaciones e IA (responsable: Giovanni) y de reportes (1 al 8: Joshua; base común y 9 al 15:
+Giovanni).
 
 ## Convenciones
 
@@ -494,3 +495,79 @@ Cuerpo `{"question": "¿Hasta cuándo puedo cancelar sin costo?"}` (máx. 1000).
 | `504` | Gemini no respondió en 30 s |
 
 Documentos de ejemplo y comandos para cargarlos: [docs/ai/README.md](../ai/README.md).
+
+---
+
+## Reportes
+
+Solo ADMIN (`@PreAuthorize("hasRole('ADMIN')")`; `401` sin token, `403` sin el rol).
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/reports` | `200` lista `[{number, id, title, description}]` ordenada por número |
+| GET | `/reports/{id}?start=&end=` | `200` vista previa en JSON (`404` si el id no existe) |
+| GET | `/reports/{id}/export?format=excel\|pdf&start=&end=` | `200` archivo para descargar |
+
+- `start` y `end` en `yyyy-MM-dd`, ambos incluidos, en hora de Guatemala. Sin `end`, hoy; sin `start`, 30 días antes
+  de `end`. `400` si `end < start`, si el periodo pasa de 3 años o si la fecha no tiene ese formato.
+- `format`: `excel` (o `xlsx`, por defecto) o `pdf`; otro valor da `400`. La respuesta trae
+  `Content-Disposition: attachment; filename="reporte-09-cancellations-2026-10-01_2026-10-31.xlsx"`.
+- Excel: título, periodo, resumen y tabla con encabezado fijo y filtros; números y fechas como valores de Excel.
+  PDF: A4 (horizontal si hay más de 5 columnas) con número de página.
+- La descarga necesita el token, así que el frontend no puede usar un enlace ni `window.open`: debe pedirla con
+  `fetch` y el encabezado `Authorization`, convertir la respuesta a `blob` y descargarla. Si el frontend corre en
+  otro dominio, CORS debe exponer `Content-Disposition` para leer el nombre del archivo.
+
+Vista previa (`ReportResult`):
+
+```json
+{
+  "number": 9,
+  "id": "cancellations",
+  "title": "Cancelaciones y rechazos, con motivo",
+  "description": "…",
+  "start": "2026-10-01",
+  "end": "2026-10-31",
+  "generatedAt": "2026-11-03T18:00:00Z",
+  "columns": [{"header": "Fecha", "type": "DATETIME"}, {"header": "Alojamiento", "type": "TEXT"}],
+  "rows": [["2026-10-12T16:20:00Z", "Casa en Xela"]],
+  "summary": [{"label": "Cancelaciones", "value": 3}]
+}
+```
+
+Tipos de columna: `TEXT`, `INTEGER`, `DECIMAL`, `PERCENT` (de 0 a 100), `DATE` (`yyyy-MM-dd`) y `DATETIME`
+(ISO-8601 en UTC; el Excel y el PDF lo muestran en hora de Guatemala).
+
+### Catálogo
+
+| # | `id` | Reporte | Fuente | Filtro del periodo |
+|---|---|---|---|---|
+| 9 | `cancellations` | Cancelaciones y rechazos, con motivo y quién lo hizo | `bookings`, `audit_logs` | `bookings.updated_at` |
+| 10 | `stay-duration` | Noches promedio por estancia y días de anticipación, por alojamiento | `bookings` `CONFIRMED`/`COMPLETED` | `bookings.created_at` |
+| 11 | `ratings-distribution` | Reseñas de 1 a 5 estrellas y promedio por alojamiento | `reviews` | `reviews.created_at` |
+| 12 | `chat-response` | Mensajes por alojamiento y minutos promedio de respuesta del anfitrión | `messages`, `conversations` | `messages.created_at` |
+| 13 | `notifications-by-type` | Notificaciones enviadas, leídas y % de lectura por tipo | `notifications` | `notifications.created_at` |
+| 14 | `ai-usage` | Preguntas al agente y documentos más citados | `ai_interactions.sources`, `knowledge_documents` | `ai_interactions.created_at` |
+| 15 | `audit-activity` | Operaciones por acción, entidad, origen y usuario | `audit_logs` | `audit_logs.created_at` |
+
+Reportes 1 al 8: los agrega Joshua con el mismo mecanismo.
+
+Notas de cálculo:
+
+- 9: "Quién" sale del último registro `BOOKING_CANCELLED` o `BOOKING_REJECTED` de `audit_logs` (huésped, anfitrión,
+  administrador o "Sin registro"); "Sin motivo" cuando `cancellation_reason` está vacío.
+- 10: noches = `check_out - check_in`; anticipación = `check_in` menos el día (hora de Guatemala) en que se creó.
+- 12: una respuesta es un mensaje del anfitrión cuyo mensaje anterior en la conversación fue del huésped; el tiempo
+  se mide entre ambos, aunque el mensaje del huésped sea de antes del periodo.
+- 14: cuenta las fuentes `type = DOCUMENT` guardadas en `ai_interactions.sources`.
+
+### Agregar un reporte
+
+1. Crear en `com.xelastay.reporting.definitions` un `@Component` que implemente `ReportDefinition` con `number()`,
+   `id()` (minúsculas y guiones, único), `title()`, `description()` y `generate(ReportPeriod)`.
+2. Consultar con `NativeQueries.rows(sql, NativeQueries.period(period))`: parámetros `:from` (incluido) y `:to`
+   (excluido), y casts con `CAST(x AS tipo)`, no con `::`.
+3. Devolver un `ReportTable` con las columnas (`ReportColumn.text/integer/decimal/percent/date/dateTime`), una fila
+   por resultado (un valor por columna) y el resumen.
+4. Probarlo con `NativeQueries` simulado (ejemplo: `ReportsNineToFifteenTest`). El endpoint y la exportación no
+   cambian.
