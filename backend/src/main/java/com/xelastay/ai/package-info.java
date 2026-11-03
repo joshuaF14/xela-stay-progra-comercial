@@ -3,6 +3,7 @@
  * <p>
  * Responsable: Giovanni.
  * <p>
- * Sin implementación: el contrato del módulo debe documentarse en docs/api/ antes de programarlo.
+ * Ingesta de documentos en fragmentos, recuperación con búsqueda de texto completo de PostgreSQL (sin pgvector),
+ * respuesta con Gemini citando fuentes y registro en ai_interactions y audit_logs (source = 'AI').
  */
 package com.xelastay.ai;
