@@ -11,9 +11,11 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.Amenity;
 import com.xelastay.catalog.AmenityRepository;
 import com.xelastay.catalog.Location;
@@ -62,6 +64,9 @@ class PropertyServiceTest {
     @Mock
     private PropertyAssembler assembler;
 
+    @Mock
+    private AuditService audit;
+
     @Captor
     private ArgumentCaptor<Property> saved;
 
@@ -72,7 +77,7 @@ class PropertyServiceTest {
     @BeforeEach
     void setUp() {
         service = new PropertyService(properties, categories, locations, locationService, images, propertyAmenities,
-                amenities, assembler);
+                amenities, assembler, audit);
     }
 
     @Test
@@ -171,6 +176,9 @@ class PropertyServiceTest {
         service.changeStatus(otherUser, true, property.getId(), PropertyStatus.REJECTED);
 
         assertThat(property.getStatus()).isEqualTo(PropertyStatus.REJECTED);
+        // El dueño es hostId: AuditService decide source = ADMIN porque el actor (ADMIN) no es el dueño.
+        verify(audit).recordAction("PROPERTY_STATUS_CHANGED", "property", property.getId(),
+                Map.of("status", "PUBLISHED"), Map.of("status", "REJECTED"), hostId);
     }
 
     @Test

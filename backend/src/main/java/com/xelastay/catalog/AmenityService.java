@@ -1,8 +1,10 @@
 package com.xelastay.catalog;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.dto.AmenityResponse;
 import com.xelastay.catalog.dto.CatalogItemRequest;
 
@@ -17,9 +19,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class AmenityService {
 
     private final AmenityRepository amenities;
+    private final AuditService audit;
 
-    public AmenityService(AmenityRepository amenities) {
+    public AmenityService(AmenityRepository amenities, AuditService audit) {
         this.amenities = amenities;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +51,9 @@ public class AmenityService {
             throw duplicate();
         }
         boolean active = request.active() == null || request.active();
-        return toResponse(save(Amenity.create(name, blankToNull(request.description()), active)));
+        AmenityResponse created = toResponse(save(Amenity.create(name, blankToNull(request.description()), active)));
+        audit.recordAction("AMENITY_CREATED", "amenity", created.id(), null, created, null);
+        return created;
     }
 
     @Transactional
@@ -58,16 +64,22 @@ public class AmenityService {
             throw duplicate();
         }
         boolean active = request.active() == null ? amenity.isActive() : request.active();
+        AmenityResponse before = toResponse(amenity);
         amenity.update(name, blankToNull(request.description()), active);
-        return toResponse(save(amenity));
+        AmenityResponse after = toResponse(save(amenity));
+        audit.recordAction("AMENITY_UPDATED", "amenity", id, before, after, null);
+        return after;
     }
 
     /** Desactiva sin borrar: los alojamientos que ya la tienen la conservan. */
     @Transactional
     public void deactivate(UUID id) {
         Amenity amenity = find(id);
+        boolean wasActive = amenity.isActive();
         amenity.deactivate();
         amenities.save(amenity);
+        audit.recordAction("AMENITY_DEACTIVATED", "amenity", id, Map.of("active", wasActive), Map.of("active", false),
+                null);
     }
 
     private Amenity save(Amenity amenity) {

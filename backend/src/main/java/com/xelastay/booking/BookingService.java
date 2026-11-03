@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -11,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.booking.dto.BookingResponse;
 import com.xelastay.booking.dto.BookingResult;
 import com.xelastay.booking.dto.CreateBookingRequest;
@@ -44,13 +46,15 @@ public class BookingService {
     private final AvailabilityBlockRepository blocks;
     private final PropertyReader properties;
     private final OutboxService outbox;
+    private final AuditService audit;
 
     public BookingService(BookingRepository bookings, AvailabilityBlockRepository blocks, PropertyReader properties,
-            OutboxService outbox) {
+            OutboxService outbox, AuditService audit) {
         this.bookings = bookings;
         this.blocks = blocks;
         this.properties = properties;
         this.outbox = outbox;
+        this.audit = audit;
     }
 
     @Transactional
@@ -222,6 +226,11 @@ public class BookingService {
                 booking.getCheckOut(), booking.getStatus().name(), booking.getCancellationReason());
         outbox.enqueue(OutboxService.eventKey(EventTypes.BOOKING_AGGREGATE, booking.getId(), action),
                 EventTypes.BOOKING_AGGREGATE, booking.getId(), eventType, payload);
+        // Auditoría de cada transición (crear, confirmar, rechazar, cancelar, completar), en la misma transacción.
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("status", booking.getStatus().name());
+        state.put("cancellationReason", booking.getCancellationReason());
+        audit.recordUserAction("BOOKING_" + action, "booking", booking.getId(), null, state);
     }
 
     private static void requireHost(PropertyInfo property, UUID userId, String message) {

@@ -1,8 +1,10 @@
 package com.xelastay.catalog;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.dto.CatalogItemRequest;
 import com.xelastay.catalog.dto.CategoryResponse;
 
@@ -17,9 +19,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class CategoryService {
 
     private final PropertyCategoryRepository categories;
+    private final AuditService audit;
 
-    public CategoryService(PropertyCategoryRepository categories) {
+    public CategoryService(PropertyCategoryRepository categories, AuditService audit) {
         this.categories = categories;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +51,10 @@ public class CategoryService {
             throw duplicate();
         }
         boolean active = request.active() == null || request.active();
-        return toResponse(save(PropertyCategory.create(name, blankToNull(request.description()), active)));
+        CategoryResponse created = toResponse(save(PropertyCategory.create(name, blankToNull(request.description()),
+                active)));
+        audit.recordAction("CATEGORY_CREATED", "property_category", created.id(), null, created, null);
+        return created;
     }
 
     @Transactional
@@ -58,16 +65,22 @@ public class CategoryService {
             throw duplicate();
         }
         boolean active = request.active() == null ? category.isActive() : request.active();
+        CategoryResponse before = toResponse(category);
         category.update(name, blankToNull(request.description()), active);
-        return toResponse(save(category));
+        CategoryResponse after = toResponse(save(category));
+        audit.recordAction("CATEGORY_UPDATED", "property_category", id, before, after, null);
+        return after;
     }
 
     /** Desactiva sin borrar: los alojamientos que ya la usan la conservan. */
     @Transactional
     public void deactivate(UUID id) {
         PropertyCategory category = find(id);
+        boolean wasActive = category.isActive();
         category.deactivate();
         categories.save(category);
+        audit.recordAction("CATEGORY_DEACTIVATED", "property_category", id, Map.of("active", wasActive),
+                Map.of("active", false), null);
     }
 
     private PropertyCategory save(PropertyCategory category) {

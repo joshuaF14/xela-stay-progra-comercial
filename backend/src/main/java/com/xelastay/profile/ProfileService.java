@@ -3,6 +3,7 @@ package com.xelastay.profile;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -11,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.common.PageResponse;
 import com.xelastay.common.Paging;
 import com.xelastay.profile.dto.ProfileResponse;
@@ -31,11 +33,14 @@ public class ProfileService {
     private final ProfileRepository profiles;
     private final RoleRepository roles;
     private final ProfileRoleRepository profileRoles;
+    private final AuditService audit;
 
-    public ProfileService(ProfileRepository profiles, RoleRepository roles, ProfileRoleRepository profileRoles) {
+    public ProfileService(ProfileRepository profiles, RoleRepository roles, ProfileRoleRepository profileRoles,
+            AuditService audit) {
         this.profiles = profiles;
         this.roles = roles;
         this.profileRoles = profileRoles;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -48,6 +53,7 @@ public class ProfileService {
     @Transactional
     public ProfileResponse updateMe(UUID profileId, UpdateMeRequest request) {
         Profile profile = find(profileId);
+        Map<String, Object> before = contact(profile);
         if (request.fullName() != null) {
             profile.rename(request.fullName().trim());
         }
@@ -58,6 +64,7 @@ public class ProfileService {
             profile.changeAvatarUrl(blankToNull(request.avatarUrl()));
         }
         profiles.save(profile);
+        audit.recordAction("PROFILE_UPDATED", "profile", profileId, before, contact(profile), profileId);
         return get(profileId);
     }
 
@@ -69,6 +76,8 @@ public class ProfileService {
                 .orElseThrow(() -> new IllegalStateException("No existe el rol HOST: falta aplicar V2"));
         if (!profileRoles.existsById(new ProfileRoleId(profileId, host.getId()))) {
             profileRoles.save(ProfileRole.of(profileId, host));
+            audit.recordAction("PROFILE_ROLE_ADDED", "profile", profileId, null,
+                    Map.of("role", SystemRoles.HOST), profileId);
         }
         return get(profileId);
     }
@@ -97,8 +106,11 @@ public class ProfileService {
             throw error(HttpStatus.CONFLICT, "No puede cambiar el estado de su propio perfil");
         }
         Profile profile = find(profileId);
+        ProfileStatus previous = profile.getStatus();
         profile.changeStatus(status);
         profiles.save(profile);
+        audit.recordAction("PROFILE_STATUS_CHANGED", "profile", profileId, Map.of("status", previous.name()),
+                Map.of("status", status.name()), profileId);
         return get(profileId);
     }
 
@@ -128,6 +140,9 @@ public class ProfileService {
         profileRoles.deleteAll(current.stream().filter(pr -> !wantedIds.contains(pr.getId().getRoleId())).toList());
         profileRoles.saveAll(found.stream().filter(role -> !currentIds.contains(role.getId()))
                 .map(role -> ProfileRole.of(profileId, role)).toList());
+        List<String> before = current.stream().map(pr -> pr.getRole().getName()).sorted().toList();
+        audit.recordAction("PROFILE_ROLES_REPLACED", "profile", profileId, Map.of("roles", before),
+                Map.of("roles", wanted.stream().sorted().toList()), profileId);
         return get(profileId);
     }
 
@@ -146,6 +161,15 @@ public class ProfileService {
         }
         names.values().forEach(list -> list.sort(String::compareTo));
         return names;
+    }
+
+    /** Campos editables del perfil, para auditoría (sin email). */
+    private static Map<String, Object> contact(Profile profile) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("fullName", profile.getFullName());
+        values.put("phone", profile.getPhone());
+        values.put("avatarUrl", profile.getAvatarUrl());
+        return values;
     }
 
     private static ProfileResponse toResponse(Profile profile, List<String> roleNames) {

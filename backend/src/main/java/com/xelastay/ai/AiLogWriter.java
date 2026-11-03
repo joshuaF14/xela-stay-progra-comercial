@@ -10,13 +10,15 @@ import jakarta.persistence.PersistenceContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xelastay.ai.dto.SourceRef;
+import com.xelastay.audit.AuditService;
+import com.xelastay.audit.AuditSource;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Registro del agente: ai_interactions (pregunta, respuesta y fuentes) y audit_logs. Usa SQL nativo para no
- * crear una entidad AuditLog que choque con la que defina el módulo de auditoría.
+ * Registro del agente: ai_interactions (pregunta, respuesta y fuentes) con SQL nativo, y audit_logs a través de
+ * {@link AuditService} del módulo de auditoría.
  */
 @Component
 public class AiLogWriter {
@@ -27,9 +29,11 @@ public class AiLogWriter {
     private EntityManager entityManager;
 
     private final ObjectMapper objectMapper;
+    private final AuditService auditService;
 
-    public AiLogWriter(ObjectMapper objectMapper) {
+    public AiLogWriter(ObjectMapper objectMapper, AuditService auditService) {
         this.objectMapper = objectMapper;
+        this.auditService = auditService;
     }
 
     /** Guarda la interacción y su registro de auditoría (source = 'AI') en una sola transacción. */
@@ -60,22 +64,8 @@ public class AiLogWriter {
     @Transactional
     public void audit(UUID actorId, String action, String entityType, UUID entityId, Map<String, Object> newValues,
             String source, String ipAddress, String userAgent) {
-        entityManager.createNativeQuery("""
-                INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, new_values, ip_address,
-                                        user_agent, source, created_at)
-                VALUES (:id, :actorId, :action, :entityType, :entityId, CAST(:newValues AS jsonb),
-                        CAST(:ipAddress AS inet), :userAgent, :source, now())
-                """)
-                .setParameter("id", UUID.randomUUID())
-                .setParameter("actorId", actorId)
-                .setParameter("action", action)
-                .setParameter("entityType", entityType)
-                .setParameter("entityId", entityId)
-                .setParameter("newValues", json(newValues))
-                .setParameter("ipAddress", ipAddress == null || ipAddress.isBlank() ? "0.0.0.0" : ipAddress)
-                .setParameter("userAgent", truncate(userAgent))
-                .setParameter("source", source)
-                .executeUpdate();
+        auditService.record(actorId, action, entityType, entityId, null, newValues, AuditSource.valueOf(source),
+                ipAddress == null || ipAddress.isBlank() ? "0.0.0.0" : ipAddress, truncate(userAgent));
     }
 
     private String json(Object value) {

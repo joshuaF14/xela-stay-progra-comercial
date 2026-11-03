@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.booking.dto.BookingResponse;
 import com.xelastay.booking.dto.BookingResult;
 import com.xelastay.booking.dto.CreateBookingRequest;
@@ -51,6 +52,9 @@ class BookingServiceTest {
     @Mock
     private OutboxService outbox;
 
+    @Mock
+    private AuditService audit;
+
     private final UUID guestId = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
     private final UUID propertyId = UUID.randomUUID();
@@ -60,7 +64,7 @@ class BookingServiceTest {
     @BeforeEach
     void setUp() {
         property = new PropertyInfo(propertyId, hostId, "Casa en Xela", new BigDecimal("350"), "GTQ", 4, "PUBLISHED");
-        service = new BookingService(bookings, blocks, properties, outbox);
+        service = new BookingService(bookings, blocks, properties, outbox, audit);
     }
 
     @Test

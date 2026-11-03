@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.xelastay.audit.AuditService;
 import com.xelastay.catalog.dto.LocationRequest;
 import com.xelastay.catalog.dto.LocationResponse;
 
@@ -29,12 +31,15 @@ class LocationServiceTest {
     @Mock
     private LocationRepository locations;
 
+    @Mock
+    private AuditService audit;
+
     private final UUID hostId = UUID.randomUUID();
     private LocationService service;
 
     @BeforeEach
     void setUp() {
-        service = new LocationService(locations);
+        service = new LocationService(locations, audit);
     }
 
     @Test
@@ -60,6 +65,7 @@ class LocationServiceTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
         verify(locations, never()).save(any());
+        verifyNoInteractions(audit);
     }
 
     @Test
