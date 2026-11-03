@@ -1,1 +1,22 @@
-services: {}
+# Servicios locales de Xela Stay. Docker Compose lee las variables del .env de la raíz del repo.
+# Uso: docker compose up -d rabbitmq
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"          # AMQP (backend)
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672" # Consola web: http://localhost:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Define RABBITMQ_USER en el .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Define RABBITMQ_PASSWORD en el .env}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  rabbitmq-data:

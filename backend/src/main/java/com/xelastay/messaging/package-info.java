@@ -3,6 +3,7 @@
  * <p>
  * Responsable: Giovanni.
  * <p>
- * Sin implementación: el contrato del módulo debe documentarse en docs/api/ antes de programarlo.
+ * Una conversación por alojamiento entre el huésped que la inicia y el anfitrión. Solo los participantes leen
+ * y escriben mensajes.
  */
 package com.xelastay.messaging;
