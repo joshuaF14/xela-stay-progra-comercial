@@ -1,18 +1,27 @@
 package com.xelastay.notification;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xelastay.common.PageResponse;
 import com.xelastay.events.BookingEventPayload;
 import com.xelastay.events.EventEnvelope;
+import com.xelastay.notification.dto.NotificationResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class NotificationService {
@@ -50,6 +59,26 @@ public class NotificationService {
             created += insert(event.eventKey(), booking.hostId(), text.type(), text.hostTitle(), text.hostMessage());
         }
         return created;
+    }
+
+    /** Notificaciones del usuario, de la más reciente a la más antigua; con unreadOnly, solo las no leídas. */
+    @Transactional(readOnly = true)
+    public PageResponse<NotificationResponse> listMine(UUID profileId, boolean unreadOnly, int page, int size) {
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Notification> result = unreadOnly
+                ? repository.findByProfileIdAndReadAtIsNull(profileId, pageable)
+                : repository.findByProfileId(profileId, pageable);
+        return PageResponse.of(result, result.getContent().stream().map(NotificationResponse::from).toList());
+    }
+
+    /** Solo el destinatario puede marcarla; para cualquier otro usuario la notificación "no existe" (404). */
+    @Transactional
+    public NotificationResponse markRead(UUID profileId, UUID notificationId) {
+        Notification notification = repository.findByIdAndProfileId(notificationId, profileId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notificación no encontrada"));
+        notification.markRead(Instant.now());
+        return NotificationResponse.from(notification);
     }
 
     private int insert(String eventKey, UUID profileId, String type, String title, String message) {

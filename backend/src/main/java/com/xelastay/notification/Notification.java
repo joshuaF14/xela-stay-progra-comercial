@@ -41,6 +41,25 @@ public class Notification {
     protected Notification() {
     }
 
+    /** Notificación nueva sin leer (las de eventos se insertan con NotificationRepository#insertIfAbsent). */
+    public static Notification create(UUID id, UUID profileId, String type, String title, String message) {
+        Notification notification = new Notification();
+        notification.id = id;
+        notification.profileId = profileId;
+        notification.type = type;
+        notification.title = title;
+        notification.message = message;
+        notification.createdAt = Instant.now();
+        return notification;
+    }
+
+    /** Marca la notificación como leída; si ya lo estaba, conserva la fecha original. */
+    public void markRead(Instant when) {
+        if (readAt == null) {
+            readAt = when;
+        }
+    }
+
     public UUID getId() {
         return id;
     }

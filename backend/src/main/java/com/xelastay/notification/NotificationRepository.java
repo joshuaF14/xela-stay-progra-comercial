@@ -1,7 +1,10 @@
 package com.xelastay.notification;
 
+import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -23,4 +26,10 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             """, nativeQuery = true)
     int insertIfAbsent(@Param("id") UUID id, @Param("profileId") UUID profileId, @Param("type") String type,
             @Param("title") String title, @Param("message") String message);
+
+    Page<Notification> findByProfileId(UUID profileId, Pageable pageable);
+
+    Page<Notification> findByProfileIdAndReadAtIsNull(UUID profileId, Pageable pageable);
+
+    Optional<Notification> findByIdAndProfileId(UUID id, UUID profileId);
 }
