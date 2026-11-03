@@ -29,4 +29,14 @@ public class CurrentUser {
     public UUID requireId() {
         return id().orElseThrow(() -> new AuthenticationCredentialsNotFoundException("No hay un usuario autenticado"));
     }
+
+    /** true si la petición trae un JWT y el perfil tiene el rol (sin el prefijo ROLE_, p. ej. "ADMIN"). */
+    public boolean hasRole(String role) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt)) {
+            return false;
+        }
+        String authority = "ROLE_" + role;
+        return authentication.getAuthorities().stream().anyMatch(a -> authority.equals(a.getAuthority()));
+    }
 }

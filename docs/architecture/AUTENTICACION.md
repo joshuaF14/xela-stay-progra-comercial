@@ -35,6 +35,53 @@ UUID userId = currentUser.requireId(); // 401 si no hay JWT
 
 Regla: **nunca se confía en un ID de usuario enviado por el cliente** (ruta, query o cuerpo). Las operaciones "propias" (mis reservas, mi perfil) usan siempre `CurrentUser`.
 
+## Perfil automático y roles
+
+En cada petición con un JWT válido, `ProfileJwtAuthenticationConverter` llama a `ProfileAccessService`:
+
+1. Busca el perfil con `id = sub` junto con sus roles (una consulta).
+2. Si no existe, lo crea con `INSERT … ON CONFLICT DO NOTHING`: `email` (claim `email`), `full_name`
+   (`user_metadata.full_name` o la parte local del email) y `status = ACTIVE`, y le asigna el rol `GUEST`. Todo en
+   una transacción; dos peticiones simultáneas del mismo usuario no chocan.
+3. Expone los roles como `ROLE_GUEST`, `ROLE_HOST` y `ROLE_ADMIN`. Los controladores los exigen con
+   `@PreAuthorize("hasRole('ADMIN')")` (seguridad por método activa con `@EnableMethodSecurity`).
+
+Los roles se leen de la base en cada petición: un cambio de roles o de estado tiene efecto en la siguiente llamada,
+sin esperar a que venza el token.
+
+**Perfil bloqueado:** si el perfil está `SUSPENDED` o `INACTIVE` (o no se pudo crear: token sin email o email ya
+usado por otro perfil), recibe la autoridad interna `PROFILE_BLOCKED` y la API responde `403` en todo `/api/v1/**`,
+salvo `GET /api/v1/me`, para que el frontend pueda mostrarle su estado. Las rutas públicas siguen disponibles.
+
+Un usuario se vuelve anfitrión con `POST /api/v1/me/host` (agrega `HOST`).
+
+### Crear el primer ADMIN
+
+Ningún usuario es ADMIN al registrarse, y para asignar roles por la API hace falta ser ADMIN. El primero lo crea
+**Joshua** desde el SQL Editor de Supabase, una sola vez:
+
+1. El usuario inicia sesión en el frontend (o hace cualquier petición con su token) para que exista su perfil.
+2. En el SQL Editor:
+
+   ```sql
+   -- Confirmar el perfil por correo
+   select id, email, status from profiles where email = '<correo-del-admin>';
+
+   -- Asignar ADMIN (idempotente)
+   insert into profile_roles (profile_id, role_id)
+   select p.id, r.id from profiles p, roles r
+   where p.email = '<correo-del-admin>' and r.name = 'ADMIN'
+   on conflict do nothing;
+
+   -- Verificar
+   select p.email, r.name from profile_roles pr
+   join profiles p on p.id = pr.profile_id join roles r on r.id = pr.role_id
+   where p.email = '<correo-del-admin>';
+   ```
+
+3. Desde ahí, el ADMIN gestiona los roles de los demás con `PUT /api/v1/profiles/{id}/roles`. Un ADMIN no puede
+   quitarse su propio rol ADMIN ni cambiar su propio estado (`409`), para evitar quedarse sin administradores.
+
 ## ¿Mi proyecto usa JWKS o el secreto heredado HS256?
 
 Supabase puede firmar los tokens con **llaves asimétricas** (publicadas en JWKS) o con el **secreto compartido heredado (HS256)**. El backend solo implementa JWKS. Para comprobar cuál usa el proyecto:
@@ -65,5 +112,5 @@ No son secretos, pero dependen del proyecto. Van en `.env` (ver [.env.example](.
 
 ## Pendiente
 
-- Roles y autorización por rol (`profiles` / `profile_roles`): hoy solo se exige estar autenticado.
-- Sincronización `auth.users` → `profiles`.
+- Si el usuario cambia su correo en Supabase Auth, `profiles.email` no se actualiza (observación 9 de
+  [PENDIENTES.md](../decisions/PENDIENTES.md)).

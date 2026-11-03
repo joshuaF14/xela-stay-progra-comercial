@@ -13,21 +13,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Ingesta de documentos: valida, divide en fragmentos y guarda documento y fragmentos en una transacción. */
+/**
+ * Ingesta de documentos: valida, divide en fragmentos y guarda documento y fragmentos en una transacción.
+ * El rol ADMIN se exige en {@link AiController} con {@code @PreAuthorize}.
+ */
 @Service
 public class KnowledgeService {
 
     private final KnowledgeDocumentRepository documents;
     private final KnowledgeChunkRepository chunks;
-    private final AdminGuard adminGuard;
     private final AiLogWriter logWriter;
     private final AiProperties properties;
 
     public KnowledgeService(KnowledgeDocumentRepository documents, KnowledgeChunkRepository chunks,
-            AdminGuard adminGuard, AiLogWriter logWriter, AiProperties properties) {
+            AiLogWriter logWriter, AiProperties properties) {
         this.documents = documents;
         this.chunks = chunks;
-        this.adminGuard = adminGuard;
         this.logWriter = logWriter;
         this.properties = properties;
     }
@@ -35,7 +36,6 @@ public class KnowledgeService {
     @Transactional
     public IngestResponse ingest(UUID adminId, String title, String documentType, String source, String content,
             String ipAddress, String userAgent) {
-        adminGuard.requireAdmin(adminId);
         String cleanTitle = required(title, "El título es obligatorio", 200);
         String cleanType = required(documentType, "El tipo de documento es obligatorio", 50).toUpperCase(Locale.ROOT);
         String cleanSource = source == null || source.isBlank() ? "api" : source.trim();
