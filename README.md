@@ -7,7 +7,7 @@ procesamiento asíncrono de reservas. Proyecto final de Programación Comercial.
 
 | Área | Estado |
 |---|---|
-| Base de datos | Migraciones `V1` (esquema, RLS y vistas de reporte) y `V2` (roles GUEST/HOST/ADMIN y catálogo base) aplicadas en Supabase ([registro](docs/database/SUPABASE_FLYWAY.md#registro-de-migraciones-aplicadas)). |
+| Base de datos | Migraciones `V1` (esquema, RLS y vistas de reporte), `V2` (roles GUEST/HOST/ADMIN y catálogo base) y `V3` (esquema `bi` y rol de solo lectura `powerbi_reader`) aplicadas en Supabase ([registro](docs/database/SUPABASE_FLYWAY.md#registro-de-migraciones-aplicadas)). |
 | Seguridad | JWT de Supabase validado en Spring (JWKS); perfil automático en la primera petición; roles con `@PreAuthorize`; perfiles suspendidos bloqueados. |
 | Perfiles y roles | `/me`, administración de perfiles y CRUD de roles. |
 | Catálogo | Categorías, amenidades y ubicaciones con lectura pública. |
@@ -18,6 +18,7 @@ procesamiento asíncrono de reservas. Proyecto final de Programación Comercial.
 | Pagos | Simulados por reserva; reembolso por ADMIN (el pago no confirma la reserva). |
 | IA | Agente RAG con Gemini y búsqueda de texto completo en español. |
 | Auditoría | Operaciones clave en `audit_logs` y consulta para ADMIN ([AUDITORIA.md](docs/architecture/AUDITORIA.md)). |
+| Reportes y Power BI | 15 reportes para ADMIN con exportación a Excel y PDF ([ENDPOINTS.md](docs/api/ENDPOINTS.md#reportes)); tablero de Power BI sobre el esquema `bi` ([POWER-BI.md](docs/technical-manual/POWER-BI.md)). |
 | Frontend | React + Vite con catálogo, mapa, detalle, reservas, panel de anfitrión e inicio de sesión con Supabase. |
 
 Decisiones abiertas: [docs/decisions/PENDIENTES.md](docs/decisions/PENDIENTES.md).
@@ -87,7 +88,7 @@ npm run dev                            # http://localhost:5173
 ```
 
 Comprobación: `http://localhost:8080/api/health` y `http://localhost:8080/actuator/health` (el componente `db` debe
-estar `UP`). Hibernate está en modo `validate`: el esquema debe existir (V1 y V2 ya están aplicadas).
+estar `UP`). Hibernate está en modo `validate`: el esquema debe existir (V1, V2 y V3 ya están aplicadas).
 
 ### Datos de demostración
 
@@ -99,6 +100,17 @@ powershell -ExecutionPolicy Bypass -File scripts\seed-demo.ps1
 
 Detalle en [ENDPOINTS.md](docs/api/ENDPOINTS.md#datos-de-demostración). El primer ADMIN se asigna desde el SQL
 Editor de Supabase ([AUTENTICACION.md](docs/architecture/AUTENTICACION.md#crear-el-primer-admin)).
+
+Después, **una vez, antes de cargar Power BI y antes de la defensa**, genera la actividad de demostración (reservas
+de noviembre y diciembre de 2026 en todos los estados, pagos por método, uno fallido y uno reembolsado, reseñas y
+un chat) para que los 15 reportes y el tablero tengan datos:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\demo-actividad.ps1 -BaseUrl https://xela-stay-api.onrender.com
+```
+
+Solo usa la API y pide la publishable key y las credenciales del anfitrión ADMIN y de 2 huéspedes de prueba sin
+guardarlas. Se puede repetir sin duplicar datos. Detalle en [POWER-BI.md](docs/technical-manual/POWER-BI.md#0-datos-de-demostración-antes-de-cargar-power-bi-y-antes-de-la-defensa).
 
 ### Pruebas
 
@@ -123,5 +135,7 @@ push y PR hacia `develop` y `main`.
 | [docs/architecture/EVENTOS.md](docs/architecture/EVENTOS.md) | Outbox, RabbitMQ y notificaciones |
 | [docs/architecture/DATABASE_ARCHITECTURE.md](docs/architecture/DATABASE_ARCHITECTURE.md) | Arquitectura de acceso a datos |
 | [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md) | Procedimiento y registro de migraciones |
+| [docs/technical-manual/README.md](docs/technical-manual/README.md) | Manual técnico: despliegue, reservas, mensajería, IA y Power BI |
+| [docs/technical-manual/POWER-BI.md](docs/technical-manual/POWER-BI.md) | Conexión de Power BI al esquema `bi`, modelo y tablero |
 | [docs/ai/README.md](docs/ai/README.md) | Base de conocimiento del agente de IA |
 | [docs/decisions/PENDIENTES.md](docs/decisions/PENDIENTES.md) | Decisiones abiertas |

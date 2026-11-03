@@ -5,7 +5,7 @@
 Xela Stay es una plataforma de reservas de alojamientos en Quetzaltenango con mapas, chat, reseñas, pagos simulados,
 IA (RAG) y procesamiento asíncrono de reservas. Es el proyecto final del curso Programación Comercial.
 
-Estado: backend funcional con todos los módulos (ver la tabla de módulos), migraciones V1 y V2 aplicadas en Supabase y
+Estado: backend funcional con todos los módulos (ver la tabla de módulos), migraciones V1, V2 y V3 aplicadas en Supabase y
 frontend conectado a la API. Contratos en [docs/api/ENDPOINTS.md](docs/api/ENDPOINTS.md).
 
 ## Stack fijo (no cambiar)
@@ -25,7 +25,7 @@ backend/                         API Spring Boot (paquete com.xelastay, un paque
     application*.properties      Configuración (local y test); lee el .env de la raíz
     db/migration/                Migraciones Flyway (V1, V2…) y callback afterMigrate.sql
 frontend/                        App React + TypeScript + Vite (lee frontend/.env)
-scripts/                         seed-demo.ps1: datos de demostración vía API
+scripts/                         seed-demo.ps1 (alojamientos) y demo-actividad.ps1 (reservas, pagos, reseñas); solo API
 supabase/migrations/             Sin uso para el esquema (ver su README.md)
 docs/
   api/                           ENDPOINTS.md y CONVENCIONES.md
@@ -33,6 +33,8 @@ docs/
   database/                      Procedimiento y registro de migraciones
   decisions/                     Decisiones abiertas (PENDIENTES.md)
   ai/                            Base de conocimiento del agente
+  technical-manual/              Manual técnico (despliegue, Power BI…)
+  powerbi/                       Evidencia del tablero (.pbix sin credenciales y capturas)
 infra/rabbitmq/                  Configuración de RabbitMQ
 docker-compose.yml               RabbitMQ local
 .github/workflows/ci.yml         CI: backend (mvnw verify) y frontend (npm ci + build)
@@ -57,6 +59,8 @@ arquitectura, API, datos y operación en su carpeta correspondiente.
 | `events`, `notification` | Outbox, RabbitMQ y notificaciones | Giovanni |
 | `review`, `messaging` | Reseñas y chat | Giovanni |
 | `ai` | Agente RAG | Giovanni |
+| `reporting` (infraestructura, exportación y reportes 9 a 15) | Catálogo de reportes, Excel y PDF | Giovanni |
+| `reporting.definitions` (reportes 1 a 8, `BiReportSupport`) | Reportes sobre el esquema `bi` | Joshua |
 
 Convenciones de código y API: [docs/api/CONVENCIONES.md](docs/api/CONVENCIONES.md). Entidades JPA idénticas a V1
 (Hibernate en `validate`), DTO como records, validación con `jakarta.validation`, usuario siempre desde `CurrentUser`,
@@ -88,8 +92,18 @@ roles con `@PreAuthorize`. Cada operación que cambia datos de negocio se regist
 
 Flyway es el único mecanismo para versionar el esquema. Las migraciones viven en
 `backend/src/main/resources/db/migration`; no se usa la CLI de Supabase ni el Dashboard para crear tablas. Una
-migración ya aplicada no se edita: cualquier cambio es una nueva versión. Aplicadas: V1 (esquema) y V2 (roles y
-catálogo base). Procedimiento y registro: [docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md).
+migración ya aplicada no se edita: cualquier cambio es una nueva versión. Aplicadas: V1 (esquema), V2 (roles y
+catálogo base) y V3 (esquema `bi` y rol `powerbi_reader`). Procedimiento y registro:
+[docs/database/SUPABASE_FLYWAY.md](docs/database/SUPABASE_FLYWAY.md).
+
+### Esquema `bi` y Power BI
+
+- `bi` contiene solo vistas de lectura para los reportes 1 a 8 y Power BI ([POWER-BI.md](docs/technical-manual/POWER-BI.md)).
+  No se expone en la Data API; `anon` y `authenticated` no tienen acceso.
+- `powerbi_reader` es de **solo lectura**: `SELECT` sobre `bi` y nada sobre `public`. Se crea `NOLOGIN` en V3; la
+  contraseña la pone Joshua a mano en el SQL Editor y nunca va al repositorio.
+- **Ninguna vista de `bi` expone datos personales**: email, teléfono, `avatar_url`, `ip_address`, `user_agent` ni
+  textos libres de usuarios (mensajes, comentarios de reseñas). Una vista nueva va en una migración nueva.
 
 El Session pooler de Supabase admite 15 clientes para todo el proyecto: cada backend usa `DB_POOL_SIZE` conexiones
 (3 por defecto). Detener los backends que no se usen.
@@ -121,5 +135,5 @@ feat/* ──PR──> develop ──PR──> main
 | Persona  | Áreas |
 |----------|-------|
 | Joshua   | Arquitectura, backend, base de datos, autenticación, seguridad e integración |
-| Pedro    | Frontend, UX, mapas e integración con la API |
+| Pedro    | Frontend, UX, mapas, integración con la API y tablero de Power BI |
 | Giovanni | Reservas, disponibilidad, RabbitMQ, chat, reseñas, IA/RAG y apoyo a reportes y auditoría |

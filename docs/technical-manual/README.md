@@ -15,5 +15,5 @@ suya.
 | 8 | Base de conocimiento del agente de IA | [docs/ai](../ai/README.md) |
 | 9 | Despliegue | [DESPLIEGUE](DESPLIEGUE.md) |
 | 10 | Frontend | Pendiente |
-| 11 | Reportes y Power BI | Pendiente |
+| 11 | Reportes y Power BI | [POWER-BI](POWER-BI.md) (reportes 1 a 15: [ENDPOINTS](../api/ENDPOINTS.md#reportes)) |
 | 12 | Decisiones abiertas | [PENDIENTES](../decisions/PENDIENTES.md) |
