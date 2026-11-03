@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../api/client';
-import type { BookingResponse } from '../types';
+import type { BookingResponse, PageResponse } from '../types';
 import { Calendar, AlertCircle, Clock, CheckCircle, XCircle, Star } from 'lucide-react';
 
 export default function MyBookings() {
@@ -18,9 +18,18 @@ export default function MyBookings() {
     useEffect(() => {
         setLoading(true);
         setErrorMsg(null);
-        // Ruta estricta de ENDPOINTS.md
-        apiFetch<BookingResponse[]>('/api/v1/me/bookings')
-            .then((data) => setBookings(data || []))
+
+        // Consulta tolerante a PageResponse o Array directo
+        apiFetch<PageResponse<BookingResponse> | BookingResponse[]>('/api/v1/me/bookings')
+            .then((data: any) => {
+                if (Array.isArray(data)) {
+                    setBookings(data);
+                } else if (data && Array.isArray(data.content)) {
+                    setBookings(data.content);
+                } else {
+                    setBookings([]);
+                }
+            })
             .catch((err: any) => {
                 setErrorMsg(err.message || 'Error al obtener tus reservaciones.');
                 setBookings([]);
@@ -63,6 +72,8 @@ export default function MyBookings() {
         }
     };
 
+    const safeBookings = Array.isArray(bookings) ? bookings : [];
+
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
             <div>
@@ -78,14 +89,15 @@ export default function MyBookings() {
                     <span className="font-bold block">No se pudieron cargar tus reservas</span>
                     <p>{errorMsg}</p>
                 </div>
-            ) : bookings.length === 0 ? (
+            ) : safeBookings.length === 0 ? (
                 <div className="bg-white border border-[#E8E2D8] rounded-3xl p-12 text-center space-y-2">
                     <AlertCircle className="w-8 h-8 text-[#878175] mx-auto opacity-50" />
                     <h3 className="text-sm font-bold text-[#1E1C1A]">No tienes reservaciones registradas</h3>
+                    <p className="text-xs text-[#736E65]">Tus reservas creadas aparecerán aquí con su estado en tiempo real.</p>
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {bookings.map((b) => (
+                    {safeBookings.map((b) => (
                         <div
                             key={b.id}
                             className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
@@ -105,7 +117,6 @@ export default function MyBookings() {
                                 </div>
                                 {getStatusBadge(b.status)}
 
-                                {/* Botón para calificar solo reservas COMPLETED */}
                                 {b.status === 'COMPLETED' && (
                                     <button
                                         onClick={() => setActiveReviewBookingId(b.id)}
@@ -126,7 +137,6 @@ export default function MyBookings() {
                     <form onSubmit={handleReviewSubmit} className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-[#E8E2D8]">
                         <h3 className="font-serif font-bold text-lg text-[#1E1C1A]">Califica tu estancia</h3>
 
-                        {/* Estrellas interactivas */}
                         <div className="flex items-center gap-1.5" onMouseLeave={() => setHoverRating(null)}>
                             {[1, 2, 3, 4, 5].map((star) => {
                                 const isFilled = (hoverRating !== null ? hoverRating : rating) >= star;
