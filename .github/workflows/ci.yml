@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Java 21)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Perfil de pruebas: sin base de datos ni RabbitMQ; sin secretos.
+      SPRING_PROFILES_ACTIVE: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Pruebas y verificación
+        run: ./mvnw -B verify
+
+  frontend:
+    name: Frontend (Node 24)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Solo se compila cuando el frontend ya versiona su package-lock.json.
+      - name: Comprobar package-lock.json
+        id: lock
+        working-directory: .
+        run: |
+          if [ -f frontend/package-lock.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "frontend/package-lock.json no existe: se omite la compilación del frontend."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.lock.outputs.exists == 'true'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        if: steps.lock.outputs.exists == 'true'
+        run: npm ci
+
+      - name: Compilar
+        if: steps.lock.outputs.exists == 'true'
+        run: npm run build
