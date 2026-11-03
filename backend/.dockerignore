@@ -1,0 +1,19 @@
+# Contexto de Docker del backend: solo pom.xml, mvnw, .mvn y src.
+target/
+.env
+.env.*
+*.log
+logs/
+
+# IDE y sistema operativo
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+Thumbs.db
+
+# Herramientas locales
+.github/
