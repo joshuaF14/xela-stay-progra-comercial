@@ -1,135 +1,175 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import type { PageResponse, PropertySummary } from '../types';
-import { apiFetch } from '../api/client';
+import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Search, MapPin, Sparkles, AlertCircle } from 'lucide-react';
+import 'leaflet/dist/leaflet.css';
+import { apiFetch } from '../api/client';
+import type { PropertySummary, PageResponse } from '../types';
+import { MapPin, Users, AlertCircle, Sparkles } from 'lucide-react';
 
-const customPin = L.divIcon({
-    className: 'custom-leaflet-pin',
-    html: `<div style="background-color: #E05A47; width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white;">
-           <span style="font-size: 11px; font-weight: bold;">Q</span>
-         </div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+// Solución al problema de los iconos invisibles en Leaflet + Vite
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Icono personalizado terracota para Xela Stay
+const customIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
 });
 
 export default function Catalog() {
     const [properties, setProperties] = useState<PropertySummary[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         setLoading(true);
         setErrorMsg(null);
-        apiFetch<PageResponse<PropertySummary>>('/api/v1/properties')
-            .then((data) => {
-                setProperties(data.content || []);
+
+        // Endpoint tolerante a PageResponse o arreglo directo
+        apiFetch<PageResponse<PropertySummary> | PropertySummary[]>('/api/v1/properties')
+            .then((data: any) => {
+                if (Array.isArray(data)) {
+                    setProperties(data);
+                } else if (data && Array.isArray(data.content)) {
+                    setProperties(data.content);
+                } else {
+                    setProperties([]);
+                }
             })
             .catch((err: any) => {
-                // CERO datos falsos: muestra el mensaje devuelto por el servidor
-                setErrorMsg(err.message || 'Error al conectar con el servidor.');
+                setErrorMsg(err.message || 'Error al conectar con el catálogo de alojamientos.');
                 setProperties([]);
             })
             .finally(() => setLoading(false));
     }, []);
 
-    const filteredProperties = properties.filter((p) =>
-        p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.municipality && p.municipality.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const safeProperties = Array.isArray(properties) ? properties : [];
 
     return (
-        <div className="space-y-8 animate-fadeIn">
-            {/* Buscador Superior */}
-            <div className="bg-white border border-[#E8E2D8] rounded-full p-2 pl-6 shadow-sm flex items-center justify-between max-w-2xl mx-auto">
-                <div className="flex items-center gap-3 flex-1">
-                    <Search className="w-4 h-4 text-[#E05A47]" />
-                    <input
-                        type="text"
-                        placeholder="Buscar por zona, municipio o nombre de estancia..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full text-xs bg-transparent focus:outline-none text-[#1E1C1A]"
-                    />
+        <div className="space-y-8 animate-fadeIn pb-12">
+            {/* Encabezado Editorial */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#E8E2D8] pb-6">
+                <div>
+                    <span className="text-[11px] uppercase font-bold tracking-widest text-[#E05A47] flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" /> Estancias Seleccionadas en Los Altos
+                    </span>
+                    <h1 className="text-3xl sm:text-4xl font-serif font-bold text-[#1E1C1A] mt-1">
+                        Explorar Alojamientos
+                    </h1>
+                </div>
+                <div className="text-xs text-[#736E65]">
+                    Mostrando <span className="font-bold text-[#1E1C1A]">{safeProperties.length}</span> estancias activas
                 </div>
             </div>
 
-            {/* Mapa Panorámico con Leaflet */}
-            <div className="relative w-full h-[360px] rounded-3xl overflow-hidden border border-[#E8E2D8] shadow-sm bg-[#EDE8DE]">
+            {/* Mapa de Quetzaltenango con pines */}
+            <div className="h-[380px] sm:h-[440px] w-full rounded-3xl overflow-hidden border border-[#E8E2D8] shadow-sm relative z-0">
                 <MapContainer
-                    center={[14.8347, -91.518]}
+                    center={[14.8347, -91.5180]} // Centro en Quetzaltenango
                     zoom={13}
                     scrollWheelZoom={false}
-                    className="w-full h-full z-0"
+                    className="h-full w-full"
                 >
                     <TileLayer
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    {filteredProperties.map((p) =>
-                        p.latitude && p.longitude ? (
-                            <Marker key={p.id} position={[p.latitude, p.longitude]} icon={customPin}>
+
+                    {safeProperties.map((p: any) => {
+                        const lat = Number(p.latitude ?? p.location?.latitude);
+                        const lng = Number(p.longitude ?? p.location?.longitude);
+
+                        if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return null;
+
+                        return (
+                            <Marker key={p.id} position={[lat, lng]} icon={customIcon}>
                                 <Popup>
-                                    <div className="text-xs p-1">
-                                        <span className="font-bold block text-[#1E1C1A]">{p.title}</span>
-                                        <span className="text-[#E05A47] font-semibold">{p.currency} {p.pricePerNight} / noche</span>
+                                    <div className="p-1 space-y-1.5 text-xs">
+                                        <img
+                                            src={p.coverImageUrl || 'https://via.placeholder.com/200x120?text=Xela+Stay'}
+                                            alt={p.title}
+                                            className="w-full h-24 object-cover rounded-xl mb-1"
+                                        />
+                                        <h4 className="font-serif font-bold text-[#1E1C1A]">{p.title}</h4>
+                                        <p className="text-[#E05A47] font-black">{p.currency || 'GTQ'} {p.pricePerNight} / noche</p>
+                                        <button
+                                            onClick={() => navigate(`/properties/${p.id}`)}
+                                            className="w-full bg-[#1E1C1A] text-white py-1 rounded-lg text-[10px] font-bold"
+                                        >
+                                            Ver detalles
+                                        </button>
                                     </div>
                                 </Popup>
                             </Marker>
-                        ) : null
-                    )}
+                        );
+                    })}
                 </MapContainer>
             </div>
 
-            {/* Listado de Alojamientos */}
+            {/* Cuadrícula de Alojamientos */}
             {loading ? (
-                <div className="p-12 text-center text-[#736E65] text-xs">Cargando alojamientos...</div>
+                <div className="p-16 text-center text-xs text-[#736E65]">Cargando catálogo oficial...</div>
             ) : errorMsg ? (
-                <div className="bg-[#FEEAE6] border border-[#F5C2B8] text-[#C84937] p-6 rounded-2xl text-center text-xs space-y-1">
-                    <AlertCircle className="w-6 h-6 mx-auto mb-2 text-[#E05A47]" />
-                    <span className="font-bold block">No se pudo cargar el catálogo</span>
+                <div className="bg-[#FEEAE6] border border-[#F5C2B8] text-[#C84937] p-8 rounded-3xl text-center text-xs space-y-2 max-w-md mx-auto">
+                    <AlertCircle className="w-8 h-8 mx-auto text-[#E05A47]" />
+                    <h3 className="font-bold text-sm">No se pudo cargar el catálogo</h3>
                     <p>{errorMsg}</p>
                 </div>
-            ) : filteredProperties.length === 0 ? (
-                <div className="bg-white border border-[#E8E2D8] p-12 rounded-3xl text-center space-y-2">
-                    <Sparkles className="w-8 h-8 text-[#878175] mx-auto opacity-50" />
-                    <h3 className="text-sm font-bold text-[#1E1C1A]">No hay alojamientos todavía</h3>
-                    <p className="text-xs text-[#736E65]">Actualmente no hay propiedades publicadas en el catálogo central.</p>
+            ) : safeProperties.length === 0 ? (
+                <div className="bg-white border border-[#E8E2D8] rounded-3xl p-16 text-center text-xs text-[#736E65]">
+                    No hay alojamientos publicados todavía en Quetzaltenango.
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredProperties.map((p) => (
-                        <Link
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {safeProperties.map((p: any) => (
+                        <div
                             key={p.id}
-                            to={`/properties/${p.id}`}
-                            className="bg-white border border-[#E8E2D8] rounded-3xl overflow-hidden hover:shadow-lg transition-all group flex flex-col"
+                            onClick={() => navigate(`/properties/${p.id}`)}
+                            className="bg-white border border-[#E8E2D8] rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
                         >
-                            <div className="h-48 overflow-hidden bg-slate-100">
-                                <img
-                                    src={p.coverImageUrl || 'https://via.placeholder.com/600x400?text=Xela+Stay'}
-                                    alt={p.title}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                />
-                            </div>
-                            <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
-                                <div>
-                                    <div className="flex items-center gap-1 text-[10px] text-[#E05A47] uppercase font-bold tracking-wider mb-1">
-                                        <MapPin className="w-3 h-3" /> {p.municipality || 'Quetzaltenango'}
+                            <div>
+                                <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100">
+                                    <img
+                                        src={p.coverImageUrl || 'https://via.placeholder.com/400x300?text=Xela+Stay'}
+                                        alt={p.title}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    />
+                                </div>
+                                <div className="p-4 space-y-2">
+                                    <div className="flex items-center gap-1 text-[11px] font-bold text-[#E05A47] uppercase tracking-wider">
+                                        <MapPin className="w-3.5 h-3.5" />
+                                        {p.municipality || p.location?.municipality || 'Quetzaltenango'}
                                     </div>
-                                    <h3 className="font-bold text-sm text-[#1E1C1A] group-hover:text-[#E05A47] transition-colors">{p.title}</h3>
-                                </div>
-                                <div className="flex items-baseline justify-between border-t border-[#F0EBE1] pt-3">
-                                    <span className="text-sm font-black text-[#1E1C1A]">
-                                        {p.currency} {p.pricePerNight} <span className="text-[10px] font-normal text-[#736E65]">/ noche</span>
-                                    </span>
-                                    <span className="text-[11px] text-[#736E65]">{p.capacity} huéspedes</span>
+                                    <h3 className="font-serif font-bold text-[#1E1C1A] text-base group-hover:text-[#E05A47] transition-colors line-clamp-1">
+                                        {p.title}
+                                    </h3>
+                                    <div className="flex items-center gap-1 text-xs text-[#736E65]">
+                                        <Users className="w-3.5 h-3.5 text-[#878175]" />
+                                        <span>Hasta {p.capacity || 2} huéspedes</span>
+                                    </div>
                                 </div>
                             </div>
-                        </Link>
+
+                            <div className="px-4 pb-4 pt-2 border-t border-[#F0EBE1] flex items-baseline justify-between">
+                                <div>
+                                    <span className="text-base font-bold text-[#1E1C1A]">
+                                        {p.currency || 'GTQ'} {p.pricePerNight}
+                                    </span>
+                                    <span className="text-[11px] text-[#736E65]"> / noche</span>
+                                </div>
+                                <span className="text-[11px] font-bold text-[#E05A47] underline">Ver estancia</span>
+                            </div>
+                        </div>
                     ))}
                 </div>
             )}
