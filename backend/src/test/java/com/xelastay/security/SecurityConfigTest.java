@@ -1,9 +1,12 @@
 package com.xelastay.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,5 +44,22 @@ class SecurityConfigTest {
     void healthIsPublic() throws Exception {
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void propertySearchAndDetailArePublic() throws Exception {
+        // Sin token no hay 401: la ruta es pública (el controlador de alojamientos llega en otro bloque).
+        mockMvc.perform(get("/api/v1/properties"))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+        mockMvc.perform(get("/api/v1/properties/{id}", UUID.randomUUID()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @Test
+    void myPropertiesAndAvailabilityBlocksStayProtected() throws Exception {
+        mockMvc.perform(get("/api/v1/me/properties"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/properties/{id}/availability-blocks", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
     }
 }

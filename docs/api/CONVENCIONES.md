@@ -32,8 +32,8 @@ Roles: `GUEST` (todo usuario registrado), `HOST` (publica alojamientos) y `ADMIN
 
 | Nivel | Cómo se protege | Rutas |
 |---|---|---|
-| Público | `permitAll` en `SecurityConfig`, solo `GET` | `/api/health`, `/actuator/health`, `/api/v1/properties/*/availability`, `/api/v1/properties/*/reviews` |
-| Autenticado | JWT válido (regla por defecto de `/api/**`) | el resto de `/api/v1/**` |
+| Público | `permitAll` en `SecurityConfig`, solo `GET` | `/api/health`, `/actuator/health`, `/api/v1/properties`, `/api/v1/properties/{id}`, `/api/v1/properties/*/availability`, `/api/v1/properties/*/reviews`, `/api/v1/property-categories/**`, `/api/v1/amenities/**`, `/api/v1/locations/**` |
+| Autenticado | JWT válido y perfil `ACTIVE` (regla por defecto de `/api/**`) | el resto de `/api/v1/**`; un perfil bloqueado solo puede `GET /api/v1/me` |
 | Por rol | `@PreAuthorize` en el controlador | operaciones de `HOST` y `ADMIN` |
 | Por dueño | comprobación en el servicio con `CurrentUser` (`403` si no corresponde) | reservas, conversaciones, reseñas, alojamientos propios |
 
