@@ -3,6 +3,6 @@
  * <p>
  * Responsable: Giovanni.
  * <p>
- * Sin implementación: el contrato del módulo debe documentarse en docs/api/ antes de programarlo.
+ * Una reseña por reserva COMPLETED, escrita por su huésped. El listado por alojamiento es público.
  */
 package com.xelastay.review;
