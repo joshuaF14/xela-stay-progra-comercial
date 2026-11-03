@@ -1,12 +1,19 @@
 package com.xelastay.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.UUID;
+
+import com.xelastay.common.PageResponse;
+import com.xelastay.property.PropertyService;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +21,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -23,6 +31,9 @@ class SecurityConfigTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private PropertyService propertyService;
 
     @Test
     void protectedRouteWithoutTokenReturns401WithApiError() throws Exception {
@@ -48,11 +59,15 @@ class SecurityConfigTest {
 
     @Test
     void propertySearchAndDetailArePublic() throws Exception {
-        // Sin token no hay 401: la ruta es pública (el controlador de alojamientos llega en otro bloque).
+        UUID propertyId = UUID.randomUUID();
+        when(propertyService.search(any(), anyInt(), anyInt(), any()))
+                .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
+
         mockMvc.perform(get("/api/v1/properties"))
-                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
-        mockMvc.perform(get("/api/v1/properties/{id}", UUID.randomUUID()))
-                .andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/properties/{id}", propertyId))
+                .andExpect(status().isOk());
+        verify(propertyService).get(propertyId, null, false);
     }
 
     @Test
