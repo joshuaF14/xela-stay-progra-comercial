@@ -33,12 +33,27 @@ export default function PropertyDetail() {
     const [loading, setLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+    // Estados del formulario de reserva corregidos
     const [checkIn, setCheckIn] = useState('');
     const [checkOut, setCheckOut] = useState('');
+    const [guestsCount, setGuestsCount] = useState(1);
     const [bookingLoading, setBookingLoading] = useState(false);
     const [bookingSuccess, setBookingSuccess] = useState(false);
 
+    // Modal de chat
     const [showChat, setShowChat] = useState(false);
+
+    // Fecha de hoy en formato YYYY-MM-DD para el atributo min
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Fecha mínima de salida: día siguiente al checkIn o mañana
+    const minCheckOutDate = checkIn
+        ? (() => {
+            const d = new Date(checkIn);
+            d.setDate(d.getDate() + 1);
+            return d.toISOString().split('T')[0];
+        })()
+        : todayStr;
 
     useEffect(() => {
         if (!id) return;
@@ -55,7 +70,7 @@ export default function PropertyDetail() {
             .catch((err) => setErrorMsg(err.message || 'Error al cargar la propiedad'))
             .finally(() => setLoading(false));
 
-        // 2. Cargar reseñas paginadas (según Gio: /properties/{id}/reviews)
+        // 2. Cargar reseñas paginadas
         apiFetch<any>(`/api/v1/properties/${id}/reviews`)
             .then((data) => {
                 const list = Array.isArray(data) ? data : data?.content || [];
@@ -75,18 +90,29 @@ export default function PropertyDetail() {
 
         setBookingLoading(true);
         try {
+            // Payload corregido según especificación de backend
             await apiFetch('/api/v1/bookings', {
                 method: 'POST',
                 body: JSON.stringify({
                     propertyId: id,
-                    checkInDate: checkIn,
-                    checkOutDate: checkOut,
+                    checkIn,
+                    checkOut,
+                    guestsCount: Number(guestsCount),
                 }),
             });
             setBookingSuccess(true);
             setTimeout(() => navigate('/my-bookings'), 1500);
         } catch (err: any) {
-            alert(err.message || 'Error al procesar la reserva');
+            // Muestra el mensaje principal y el detalle de campos si el backend los devuelve
+            let errorDetails = '';
+            if (err.details) {
+                if (typeof err.details === 'string') {
+                    errorDetails = `\nDetalles: ${err.details}`;
+                } else if (typeof err.details === 'object') {
+                    errorDetails = `\nDetalles: ${JSON.stringify(err.details)}`;
+                }
+            }
+            alert(`${err.message || 'Error al procesar la reserva'}${errorDetails}`);
         } finally {
             setBookingLoading(false);
         }
@@ -106,11 +132,12 @@ export default function PropertyDetail() {
         property.images?.find((img: any) => img.isCover)?.imageUrl ||
         property.images?.[0]?.imageUrl ||
         property.imageUrl ||
+        property.coverImageUrl ||
         'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb';
 
-    // Gio indicó que el promedio y total vienen en averageRating y reviewCount
     const avg = property.averageRating || property.rating || null;
     const count = property.reviewCount ?? reviews.length;
+    const maxCapacity = property.capacity || 1;
 
     return (
         <div className="max-w-5xl mx-auto space-y-8 pb-16 animate-fadeIn">
@@ -129,7 +156,10 @@ export default function PropertyDetail() {
 
                 <div className="flex items-center gap-2 text-xs text-[#736E65]">
                     <MapPin className="w-4 h-4 text-[#E05A47]" />
-                    <span>{property.location?.address || property.address || 'Quetzaltenango'}, {property.location?.municipality || 'Quetzaltenango'}</span>
+                    <span>
+                        {property.location?.address || property.address || 'Quetzaltenango'},{' '}
+                        {property.location?.municipality || 'Quetzaltenango'}
+                    </span>
                 </div>
             </div>
 
@@ -163,7 +193,7 @@ export default function PropertyDetail() {
                         </button>
                     </div>
 
-                    {/* SECCIÓN DE RESEÑAS */}
+                    {/* Reseñas */}
                     <div className="bg-white border border-[#E8E2D8] rounded-3xl p-6 shadow-sm space-y-4">
                         <div className="flex items-center justify-between border-b border-[#F0EBE1] pb-3">
                             <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
@@ -234,21 +264,45 @@ export default function PropertyDetail() {
                                     <input
                                         type="date"
                                         required
+                                        min={todayStr}
                                         value={checkIn}
-                                        onChange={(e) => setCheckIn(e.target.value)}
+                                        onChange={(e) => {
+                                            setCheckIn(e.target.value);
+                                            if (checkOut && e.target.value >= checkOut) {
+                                                setCheckOut('');
+                                            }
+                                        }}
                                         className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
                                     />
                                 </div>
+
                                 <div>
                                     <label className="block text-[11px] font-semibold text-[#1E1C1A] mb-1">Salida</label>
                                     <input
                                         type="date"
                                         required
+                                        min={minCheckOutDate}
                                         value={checkOut}
                                         onChange={(e) => setCheckOut(e.target.value)}
                                         className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
                                     />
                                 </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-[#1E1C1A] mb-1">
+                                        Huéspedes (máx. {maxCapacity})
+                                    </label>
+                                    <input
+                                        type="number"
+                                        required
+                                        min={1}
+                                        max={maxCapacity}
+                                        value={guestsCount}
+                                        onChange={(e) => setGuestsCount(Math.max(1, Math.min(maxCapacity, Number(e.target.value))))}
+                                        className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl px-3 py-2 text-xs text-[#1E1C1A] focus:outline-none focus:border-[#E05A47]"
+                                    />
+                                </div>
+
                                 <button
                                     type="submit"
                                     disabled={bookingLoading}
