@@ -11,8 +11,17 @@ import {
     MessageSquare,
     Star,
     X,
-    CheckCircle2
+    CheckCircle2,
+    CreditCard
 } from 'lucide-react';
+
+interface Payment {
+    id: string;
+    bookingId: string;
+    paymentMethod: 'CARD' | 'TRANSFER' | 'CASH';
+    status: 'APPROVED' | 'REJECTED' | 'PENDING';
+    amount?: number;
+}
 
 export default function MyBookings() {
     const [bookings, setBookings] = useState<any[]>([]);
@@ -36,6 +45,32 @@ export default function MyBookings() {
     const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
     const [reviewedBookings, setReviewedBookings] = useState<Record<string, boolean>>({});
 
+    // Pagos
+    const [approvedPayments, setApprovedPayments] = useState<Record<string, string>>({});
+    const [paymentBooking, setPaymentBooking] = useState<any | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<'CARD' | 'TRANSFER' | 'CASH'>('CARD');
+    const [submittingPayment, setSubmittingPayment] = useState(false);
+    const [paymentMsg, setPaymentMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+    const fetchPaymentsForBookings = async (list: any[]) => {
+        const paymentsMap: Record<string, string> = {};
+        await Promise.all(
+            list.map(async (b) => {
+                try {
+                    const data: any = await apiFetch(`/api/v1/bookings/${b.id}/payments`);
+                    const payments: Payment[] = Array.isArray(data) ? data : data?.content || [];
+                    const approved = payments.find((p: Payment) => p.status === 'APPROVED');
+                    if (approved) {
+                        paymentsMap[b.id] = approved.paymentMethod;
+                    }
+                } catch {
+                    // Silencioso si no hay pagos aún
+                }
+            })
+        );
+        setApprovedPayments(paymentsMap);
+    };
+
     const fetchMyBookings = async () => {
         setLoading(true);
         setErrorMsg(null);
@@ -43,6 +78,7 @@ export default function MyBookings() {
             const data: any = await apiFetch('/api/v1/me/bookings');
             const list = Array.isArray(data) ? data : data?.content || [];
             setBookings(list);
+            await fetchPaymentsForBookings(list);
         } catch (err: any) {
             setErrorMsg(err.message || 'Error al cargar tus reservaciones.');
         } finally {
@@ -52,7 +88,6 @@ export default function MyBookings() {
 
     useEffect(() => {
         fetchMyBookings();
-        // Cargar reservaciones ya reseñadas guardadas en local
         try {
             const cached = JSON.parse(localStorage.getItem('xela_reviewed_bookings') || '{}');
             setReviewedBookings(cached);
@@ -108,7 +143,6 @@ export default function MyBookings() {
         setSubmittingReview(true);
 
         try {
-            // POST en singular hacia /bookings/{bookingId}/review según contrato de Gio
             await apiFetch(`/api/v1/bookings/${reviewBooking.id}/review`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -124,12 +158,65 @@ export default function MyBookings() {
                 fetchMyBookings();
             }, 1200);
         } catch (err: any) {
-            // Si responde 409 (ya tiene reseña o no está completed), esconder botón según regla de Gio
             markBookingAsReviewed(reviewBooking.id);
             alert(err.message || 'Esta reserva ya tiene una reseña registrada o no está completada.');
             setReviewBooking(null);
         } finally {
             setSubmittingReview(false);
+        }
+    };
+
+    // Manejo de Modal y Pago
+    const handleOpenPayment = (b: any) => {
+        setPaymentBooking(b);
+        setPaymentMethod('CARD');
+        setPaymentMsg(null);
+    };
+
+    const handleConfirmPayment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!paymentBooking) return;
+
+        setSubmittingPayment(true);
+        setPaymentMsg(null);
+
+        try {
+            const res: any = await apiFetch(`/api/v1/bookings/${paymentBooking.id}/payments`, {
+                method: 'POST',
+                body: JSON.stringify({ paymentMethod }),
+            });
+
+            if (res?.status === 'APPROVED') {
+                setPaymentMsg({ text: 'Pago aprobado', type: 'success' });
+                setTimeout(() => {
+                    setPaymentBooking(null);
+                    fetchMyBookings();
+                }, 1200);
+            } else if (res?.status === 'REJECTED') {
+                setPaymentMsg({ text: 'Pago rechazado', type: 'error' });
+            } else {
+                setPaymentMsg({ text: `Estado del pago: ${res?.status || 'Procesado'}`, type: 'error' });
+            }
+        } catch (err: any) {
+            setPaymentMsg({
+                text: err?.message || 'Error al procesar el pago.',
+                type: 'error'
+            });
+        } finally {
+            setSubmittingPayment(false);
+        }
+    };
+
+    const formatPaymentMethod = (method: string) => {
+        switch (method) {
+            case 'CARD':
+                return 'Tarjeta';
+            case 'TRANSFER':
+                return 'Transferencia';
+            case 'CASH':
+                return 'Efectivo';
+            default:
+                return method;
         }
     };
 
@@ -164,6 +251,8 @@ export default function MyBookings() {
                         const checkOut = b.checkOutDate || b.checkOut || b.endDate || 'Pendiente';
                         const total = b.totalPrice ?? b.totalAmount ?? b.total ?? b.price ?? 0;
                         const hasReview = reviewedBookings[b.id] || false;
+                        const approvedMethod = approvedPayments[b.id];
+                        const isPaid = Boolean(approvedMethod);
 
                         return (
                             <div key={b.id} className="bg-white border border-[#E8E2D8] rounded-2xl p-5 shadow-sm space-y-3">
@@ -181,8 +270,16 @@ export default function MyBookings() {
                                         <h3 className="font-serif font-bold text-sm text-[#1E1C1A]">{title}</h3>
                                     )}
 
-                                    <span
-                                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${b.status === 'PENDING'
+                                    <div className="flex items-center gap-2">
+                                        {/* Etiqueta Pagado si tiene pago aprobado */}
+                                        {isPaid && (
+                                            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                Pagado ({formatPaymentMethod(approvedMethod)})
+                                            </span>
+                                        )}
+
+                                        <span
+                                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${b.status === 'PENDING'
                                                 ? 'bg-amber-100 text-amber-800'
                                                 : b.status === 'CONFIRMED'
                                                     ? 'bg-emerald-100 text-emerald-800'
@@ -191,10 +288,11 @@ export default function MyBookings() {
                                                         : b.status === 'CANCELLED'
                                                             ? 'bg-rose-100 text-rose-800'
                                                             : 'bg-zinc-100 text-zinc-700'
-                                            }`}
-                                    >
-                                        {b.status}
-                                    </span>
+                                                }`}
+                                        >
+                                            {b.status}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div className="flex flex-wrap items-center justify-between text-xs text-[#5C574F] gap-2">
@@ -228,6 +326,17 @@ export default function MyBookings() {
                                     </button>
 
                                     <div className="flex items-center gap-2">
+                                        {/* Botón Pagar: Solo si está CONFIRMED y no ha sido pagada */}
+                                        {b.status === 'CONFIRMED' && !isPaid && (
+                                            <button
+                                                onClick={() => handleOpenPayment(b)}
+                                                className="bg-[#1E1C1A] hover:bg-[#33302B] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                                            >
+                                                <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+                                                <span>Pagar</span>
+                                            </button>
+                                        )}
+
                                         {/* Botón de Reseña solo si está COMPLETED y no ha sido reseñada */}
                                         {b.status === 'COMPLETED' && (
                                             hasReview ? (
@@ -297,6 +406,87 @@ export default function MyBookings() {
                 propertyId={activeChatPropertyId || undefined}
                 conversationId={activeChatConversationId}
             />
+
+            {/* Modal para Pagar Reserva */}
+            {paymentBooking && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+                    <div className="bg-white border border-[#E8E2D8] rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-4 animate-fadeIn">
+                        <div className="flex items-center justify-between border-b border-[#F0EBE1] pb-3">
+                            <h3 className="font-serif font-bold text-base text-[#1E1C1A] flex items-center gap-2">
+                                <CreditCard className="w-5 h-5 text-[#E05A47]" />
+                                Pagar Reserva
+                            </h3>
+                            <button
+                                onClick={() => setPaymentBooking(null)}
+                                className="p-1 rounded-lg text-[#736E65] hover:bg-[#FAF7F2]"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="bg-[#FAF7F2] p-3 rounded-2xl border border-[#E8E2D8] text-xs space-y-1">
+                            <div className="text-[#736E65]">Total a pagar:</div>
+                            <div className="text-xl font-serif font-bold text-[#1E1C1A]">
+                                Q{paymentBooking.totalPrice ?? paymentBooking.totalAmount ?? paymentBooking.total ?? paymentBooking.price ?? 0}
+                            </div>
+                        </div>
+
+                        {paymentMsg && (
+                            <div
+                                className={`p-4 rounded-2xl flex items-center gap-2 text-xs border ${paymentMsg.type === 'success'
+                                        ? 'bg-[#F4F9F4] border-[#CCE2CC] text-[#3A833A]'
+                                        : 'bg-[#FEEAE6] border-[#F5C2B8] text-[#C84937]'
+                                    }`}
+                            >
+                                {paymentMsg.type === 'success' ? (
+                                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                ) : (
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                )}
+                                <span>{paymentMsg.text}</span>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleConfirmPayment} className="space-y-4 text-xs">
+                            <div>
+                                <label className="block font-semibold text-[#1E1C1A] mb-1.5">
+                                    Método de pago:
+                                </label>
+                                <select
+                                    value={paymentMethod}
+                                    onChange={(e) => setPaymentMethod(e.target.value as 'CARD' | 'TRANSFER' | 'CASH')}
+                                    className="w-full bg-[#FAF7F2] border border-[#E8E2D8] rounded-xl p-2.5 text-[#1E1C1A] focus:outline-none focus:border-[#E05A47] font-medium"
+                                >
+                                    <option value="CARD">Tarjeta (CARD)</option>
+                                    <option value="TRANSFER">Transferencia (TRANSFER)</option>
+                                    <option value="CASH">Efectivo (CASH)</option>
+                                </select>
+                            </div>
+
+                            <div className="bg-[#FAF7F2] border border-[#E8E2D8] p-3 rounded-xl text-[11px] text-[#736E65]">
+                                ℹ️ Pago simulado con fines académicos; no se realiza ningún cobro real.
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-3 border-t border-[#F0EBE1]">
+                                <button
+                                    type="button"
+                                    onClick={() => setPaymentBooking(null)}
+                                    className="px-4 py-2 rounded-xl text-xs font-semibold text-[#736E65] hover:bg-[#FAF7F2]"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={submittingPayment}
+                                    className="bg-[#E05A47] hover:bg-[#C84937] text-white px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm disabled:opacity-50"
+                                >
+                                    {submittingPayment ? 'Procesando...' : 'Confirmar Pago'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Modal para Dejar Reseña */}
             {reviewBooking && (
