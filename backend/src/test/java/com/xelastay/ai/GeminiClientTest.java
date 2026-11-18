@@ -10,6 +10,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -24,6 +26,8 @@ class GeminiClientTest {
 
     private static final String URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
+    private static final String STREAM_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse";
 
     @Test
     void sendsTheKeyInTheHeaderAndReturnsOnlyTheAnswerText() {
@@ -69,6 +73,61 @@ class GeminiClientTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
         server.verify();
+    }
+
+    @Test
+    void streamReadsSseDataLinesAndDeliversEachPieceInOrder() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GeminiClient client = new GeminiClient(builder.build(), properties("clave-de-prueba"));
+        server.expect(requestTo(STREAM_URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("x-goog-api-key", "clave-de-prueba"))
+                .andExpect(jsonPath("$.contents[0].parts[0].text").value("Pregunta"))
+                .andRespond(withSuccess("""
+                        data: {"candidates":[{"content":{"parts":[{"text":"pensando","thought":true}]}}]}
+
+                        data: {"candidates":[{"content":{"parts":[{"text":"Puedes cancelar "}]}}]}
+
+                        data: {"candidates":[{"content":{"parts":[{"text":"sin costo [1]."}]}}]}
+
+                        """, MediaType.TEXT_EVENT_STREAM));
+
+        List<String> pieces = new ArrayList<>();
+        String answer = client.generateStream("Reglas", "Pregunta", pieces::add);
+
+        assertThat(pieces).containsExactly("Puedes cancelar ", "sin costo [1].");
+        assertThat(answer).isEqualTo("Puedes cancelar sin costo [1].");
+        server.verify();
+    }
+
+    @Test
+    void streamRateLimitBecomes503WithoutTokens() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GeminiClient client = new GeminiClient(builder.build(), properties("clave-de-prueba"));
+        server.expect(requestTo(STREAM_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+
+        List<String> pieces = new ArrayList<>();
+        assertThatThrownBy(() -> client.generateStream("Reglas", "Pregunta", pieces::add))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        assertThat(pieces).isEmpty();
+    }
+
+    @Test
+    void streamWithoutTextIs502() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GeminiClient client = new GeminiClient(builder.build(), properties("clave-de-prueba"));
+        server.expect(requestTo(STREAM_URL)).andRespond(withSuccess("""
+                data: {"candidates":[{"finishReason":"SAFETY"}]}
+
+                """, MediaType.TEXT_EVENT_STREAM));
+
+        assertThatThrownBy(() -> client.generateStream("Reglas", "Pregunta", piece -> { }))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        ex -> assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY));
     }
 
     private static AiProperties properties(String apiKey) {

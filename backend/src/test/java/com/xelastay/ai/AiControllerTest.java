@@ -1,19 +1,26 @@
 package com.xelastay.ai;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import com.xelastay.ai.dto.ChatResponse;
 import com.xelastay.ai.dto.IngestResponse;
@@ -23,13 +30,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -78,6 +88,51 @@ class AiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.details[0].field").value("question"));
         verifyNoInteractions(chatService);
+    }
+
+    @Test
+    void chatStreamRequiresAToken() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/chat/stream").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"¿Hay parqueo?\"}"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(chatService);
+    }
+
+    @Test
+    void chatStreamSendsTokenEventsAndThenDone() throws Exception {
+        UUID interactionId = UUID.randomUUID();
+        when(chatService.chatStream(eq(userId), eq("¿Hay parqueo?"), any(), any(), any())).thenAnswer(call -> {
+            Consumer<String> onToken = call.getArgument(4);
+            onToken.accept("Depende del ");
+            onToken.accept("alojamiento [1].");
+            return new ChatResponse(interactionId, "Depende del alojamiento [1].", List.of());
+        });
+
+        MvcResult started = mockMvc.perform(post("/api/v1/ai/chat/stream").with(user())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"question\":\"¿Hay parqueo?\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(started))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", startsWith(MediaType.TEXT_EVENT_STREAM_VALUE)))
+                .andExpect(content().string(containsString("event:token\ndata:{\"text\":\"Depende del \"}")))
+                .andExpect(content().string(containsString("event:token\ndata:{\"text\":\"alojamiento [1].\"}")))
+                .andExpect(content().string(containsString("event:done\ndata:{\"interactionId\":\"" + interactionId)));
+    }
+
+    @Test
+    void chatStreamReportsModelErrorsAsAnErrorEvent() throws Exception {
+        when(chatService.chatStream(any(), any(), any(), any(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Límite de uso"));
+
+        MvcResult started = mockMvc.perform(post("/api/v1/ai/chat/stream").with(user())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"question\":\"¿Hay parqueo?\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(started))
+                .andExpect(content().string(containsString("event:error\ndata:")))
+                .andExpect(content().string(containsString("\"status\":503")))
+                .andExpect(content().string(containsString("Límite de uso")));
     }
 
     @Test
