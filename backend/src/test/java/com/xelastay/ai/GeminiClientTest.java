@@ -48,6 +48,37 @@ class GeminiClientTest {
     }
 
     @Test
+    void functionCallIsExecutedAndTheSecondResponseIsReturned() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        GeminiClient client = new GeminiClient(builder.build(), properties("clave-de-prueba"));
+        String toolResult = "{\"alojamientos\":[]}";
+
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.tools[0].functionDeclarations[0].name")
+                        .value(AiToolExecutor.CONSULTAR_ALOJAMIENTOS_DISPONIBLES))
+                .andExpect(jsonPath("$.tools[0].functionDeclarations[0].parameters.type").value("OBJECT"))
+                .andRespond(withSuccess("""
+                        {"candidates":[{"content":{"parts":[{"functionCall":{
+                          "name":"consultar_alojamientos_disponibles","args":{}}}]}}]}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.contents[1].parts[0].functionCall.name")
+                        .value(AiToolExecutor.CONSULTAR_ALOJAMIENTOS_DISPONIBLES))
+                .andExpect(jsonPath("$.contents[2].parts[0].functionResponse.name")
+                        .value(AiToolExecutor.CONSULTAR_ALOJAMIENTOS_DISPONIBLES))
+                .andExpect(jsonPath("$.contents[2].parts[0].functionResponse.response.result").value(toolResult))
+                .andRespond(withSuccess("""
+                        {"candidates":[{"content":{"parts":[{"text":"No hay alojamientos publicados."}]}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        String answer = client.generateWithTools("Reglas", "Pregunta", name -> toolResult);
+
+        assertThat(answer).isEqualTo("No hay alojamientos publicados.");
+        server.verify();
+    }
+
+    @Test
     void rateLimitBecomes503() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

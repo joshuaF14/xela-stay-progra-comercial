@@ -1,6 +1,7 @@
 package com.xelastay.property;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,4 +31,6 @@ public interface PropertyRepository extends JpaRepository<Property, UUID>, JpaSp
               WHERE property_id = :propertyId AND status IN ('PENDING', 'CONFIRMED') AND check_out > :today)
             """, nativeQuery = true)
     boolean hasActiveFutureBookings(@Param("propertyId") UUID propertyId, @Param("today") LocalDate today);
+
+    List<Property> findByStatusAndDeletedAtIsNullOrderByTitleAsc(PropertyStatus status);
 }

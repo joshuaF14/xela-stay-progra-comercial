@@ -4,4 +4,8 @@ package com.xelastay.ai;
 public interface AiClient {
 
     String generate(String systemInstruction, String prompt);
+
+    default String generateWithTools(String systemInstruction, String prompt, AiToolExecutor executor) {
+        return generate(systemInstruction, prompt);
+    }
 }

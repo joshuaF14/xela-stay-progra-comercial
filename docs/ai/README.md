@@ -35,3 +35,14 @@ curl -s -X POST http://localhost:8080/api/v1/ai/chat \
 
 La respuesta trae `answer` (con citas como [1]) y `sources` (documento, fragmento y alojamientos usados).
 Cada pregunta queda en `ai_interactions` y en `audit_logs` con `source = 'AI'`.
+
+Para consultar alojamientos reales, el modelo puede pedir la herramienta `consultar_alojamientos_disponibles`:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/ai/chat \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"question":"¿Qué alojamientos tienen precio por noche?"}'
+```
+
+Cuando Gemini devuelve `functionCall`, el backend consulta `properties` con `status = 'PUBLISHED'` y
+`deleted_at IS NULL`, reenvía el `functionResponse` y la respuesta final cita esos datos como `[T]`.

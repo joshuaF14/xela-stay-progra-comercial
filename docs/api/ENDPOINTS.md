@@ -479,7 +479,10 @@ Cuerpo `{"question": "¿Hasta cuándo puedo cancelar sin costo?"}` (máx. 1000).
    (`to_tsvector('spanish')`, `plainto_tsquery` con términos unidos por OR y `ts_rank`), sin pgvector.
 2. Agrega hasta 3 alojamientos `PUBLISHED` cuyo título, descripción o ubicación coinciden.
 3. Pide a Gemini (`AI_MODEL`, por defecto `gemini-3.8-flash`) responder solo con esas fuentes y citarlas como `[n]`.
-   Si no hay fuentes, no llama al modelo y responde que no tiene esa información.
+   El modelo tiene la herramienta `consultar_alojamientos_disponibles`: si devuelve `functionCall`, el backend consulta
+   los alojamientos `PUBLISHED` con `deleted_at IS NULL`, reenvía el `functionResponse` y el modelo redacta la respuesta
+   final citando esos datos como `[T]`. Si Gemini no pide la herramienta, se usa una sola llamada.
+   Si no hay fuentes ni datos de la herramienta, responde que no tiene esa información.
 4. Registra la interacción en `ai_interactions` y en `audit_logs` con `source = 'AI'`.
 
 ```json
