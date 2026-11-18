@@ -1,20 +1,25 @@
 # Documentos de ejemplo para el agente de IA
 
 Base de conocimiento inicial del asistente de Xela Stay. Son documentos **de ejemplo** para la demostración del
-RAG; las condiciones de devolución y los horarios no son una política acordada del proyecto.
+RAG; las condiciones de devolución, los horarios y los precios de limpieza no son una política acordada del proyecto.
 
 | Archivo | documentType |
 |---|---|
 | `politicas-de-cancelacion.md` | `POLITICA` |
 | `reglas-de-la-casa.md` | `REGLAS` |
 | `preguntas-frecuentes.md` | `FAQ` |
+| `servicios-de-limpieza.md` | `SERVICIOS` |
+
+`documentType` es una categoría libre: V1 la guarda como `VARCHAR(50)` sin lista de valores y la API la pasa a
+mayúsculas.
 
 ## Cargarlos
 
 Requiere un token de un usuario con rol `ADMIN` (`$TOKEN`) y el backend en `http://localhost:8080`:
 
 ```bash
-for doc in politicas-de-cancelacion:POLITICA reglas-de-la-casa:REGLAS preguntas-frecuentes:FAQ; do
+for doc in politicas-de-cancelacion:POLITICA reglas-de-la-casa:REGLAS preguntas-frecuentes:FAQ \
+           servicios-de-limpieza:SERVICIOS; do
   curl -s -X POST http://localhost:8080/api/v1/ai/documents \
     -H "Authorization: Bearer $TOKEN" \
     -F "file=@docs/ai/${doc%%:*}.md" -F "documentType=${doc##*:}"
