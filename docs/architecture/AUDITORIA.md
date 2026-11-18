@@ -9,8 +9,9 @@ inserción: nunca se modifica ni se borra desde la API.
 Servicio de negocio ──(misma transacción)──> AuditService.record(...) ──> audit_logs
                                               │
                                               ├─ actor: CurrentUser (claim sub) o el que indique el llamador
-                                              ├─ ip_address: primera IP de X-Forwarded-For o la dirección remota
-                                              └─ user_agent: encabezado User-Agent (máx. 500 caracteres)
+                                               ├─ ip_address: primera IP de X-Forwarded-For o la dirección remota
+                                               ├─ user_agent: encabezado User-Agent (máx. 500 caracteres)
+                                               └─ endpoint: URI de la petición (/api/v1/...), null en tareas internas
 ```
 
 - **`com.xelastay.audit.AuditService`** es el único punto de escritura. Se une a la transacción en curso
@@ -20,14 +21,14 @@ Servicio de negocio ──(misma transacción)──> AuditService.record(...) �
 - `oldValues` y `newValues` se guardan como `jsonb`. Se pasan como `Map` o como un record (se convierte con Jackson).
   Solo se registran campos de negocio; nunca contraseñas, tokens ni el email del perfil.
 - La IP solo se guarda si tiene forma de IPv4/IPv6 (si no, queda `null`), para que el `CAST` a `inet` no falle.
-- Sin petición HTTP (tareas internas), IP y user agent quedan `null`.
+- Sin petición HTTP (tareas internas), IP, user agent y endpoint quedan `null`.
 
 ### API de `AuditService`
 
 | Método | Uso |
 |---|---|
 | `record(actorId, action, entityType, entityId, oldValues, newValues, source)` | Registro completo; IP y user agent de la petición actual. |
-| `record(…, source, ipAddress, userAgent)` | Igual, con IP y user agent dados (lo usa `AiLogWriter`). |
+| `record(…, source, ipAddress, userAgent)` | Igual, con IP y user agent dados (lo usa `AiLogWriter`); el endpoint sigue viniendo de la petición actual. |
 | `recordAction(action, entityType, entityId, oldValues, newValues, ownerId)` | Actor = usuario del token. `source = ADMIN` si es ADMIN y el recurso no es suyo (`ownerId` distinto, o `null` en recursos compartidos como el catálogo); `USER` en los demás casos. |
 | `recordUserAction(action, entityType, entityId, oldValues, newValues)` | Actor = usuario del token; `source = USER` (reservas). |
 
@@ -83,7 +84,8 @@ cambio en el módulo de reservas. `AiLogWriter` conserva su firma y sus valores 
       "id": "…", "actorId": "…", "actorName": "Ana López",
       "action": "PROPERTY_STATUS_CHANGED", "entityType": "property", "entityId": "…",
       "oldValues": { "status": "DRAFT" }, "newValues": { "status": "PUBLISHED" },
-      "ipAddress": "190.56.1.2", "userAgent": "Mozilla/5.0 …", "source": "USER",
+      "ipAddress": "190.56.1.2", "userAgent": "Mozilla/5.0 …",
+      "endpoint": "/api/v1/properties/…/status", "source": "USER",
       "createdAt": "2026-11-04T15:30:00Z"
     }
   ],
@@ -97,6 +99,6 @@ las columnas `ip_address` (`inet`) y `old_values`/`new_values` (`jsonb`) se escr
 Verificación rápida en el SQL Editor:
 
 ```sql
-select action, entity_type, source, ip_address, created_at
+select action, entity_type, source, endpoint, ip_address, created_at
 from audit_logs order by created_at desc limit 20;
 ```

@@ -55,6 +55,9 @@ public class AuditLog {
     @Column(name = "user_agent", updatable = false, columnDefinition = "text")
     private String userAgent;
 
+    @Column(name = "endpoint", updatable = false, length = 255)
+    private String endpoint;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "source", nullable = false, updatable = false, length = 30)
     private AuditSource source;
@@ -67,7 +70,7 @@ public class AuditLog {
 
     public static AuditLog of(UUID actorId, String action, String entityType, UUID entityId,
             Map<String, Object> oldValues, Map<String, Object> newValues, AuditSource source, String ipAddress,
-            String userAgent) {
+            String userAgent, String endpoint) {
         AuditLog log = new AuditLog();
         log.actorId = actorId;
         log.action = action;
@@ -78,6 +81,7 @@ public class AuditLog {
         log.source = source;
         log.ipAddress = ipAddress;
         log.userAgent = userAgent;
+        log.setEndpoint(endpoint);
         log.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         return log;
     }
@@ -116,6 +120,14 @@ public class AuditLog {
 
     public String getUserAgent() {
         return userAgent;
+    }
+
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    public void setEndpoint(String endpoint) {
+        this.endpoint = endpoint;
     }
 
     public AuditSource getSource() {

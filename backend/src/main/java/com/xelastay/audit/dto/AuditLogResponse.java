@@ -18,6 +18,7 @@ public record AuditLogResponse(
         Map<String, Object> newValues,
         String ipAddress,
         String userAgent,
+        String endpoint,
         AuditSource source,
         OffsetDateTime createdAt) {
 }

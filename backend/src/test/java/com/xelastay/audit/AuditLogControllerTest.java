@@ -53,7 +53,8 @@ class AuditLogControllerTest {
         UUID actorId = UUID.randomUUID();
         AuditLogResponse row = new AuditLogResponse(UUID.randomUUID(), actorId, "Ana", "PROPERTY_STATUS_CHANGED",
                 "property", entityId, Map.of("status", "DRAFT"), Map.of("status", "PUBLISHED"), "190.1.2.3",
-                "Mozilla", AuditSource.USER, OffsetDateTime.now(ZoneOffset.UTC));
+                "Mozilla", "/api/v1/properties/" + entityId + "/status", AuditSource.USER,
+                OffsetDateTime.now(ZoneOffset.UTC));
         when(auditService.search("property", entityId, actorId, AuditSource.USER, LocalDate.of(2026, 11, 1),
                 LocalDate.of(2026, 11, 30), 0, 20)).thenReturn(new PageResponse<>(List.of(row), 0, 20, 1, 1));
 
@@ -63,7 +64,8 @@ class AuditLogControllerTest {
                         .param("from", "2026-11-01").param("to", "2026-11-30"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].actorName").value("Ana"))
-                .andExpect(jsonPath("$.content[0].newValues.status").value("PUBLISHED"));
+                .andExpect(jsonPath("$.content[0].newValues.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.content[0].endpoint").value("/api/v1/properties/" + entityId + "/status"));
     }
 
     private RequestPostProcessor as(String role) {

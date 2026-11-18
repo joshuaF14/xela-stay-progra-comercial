@@ -34,7 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Escribe y consulta audit_logs. Cada registro se une a la transacción en curso: si la operación auditada se
- * revierte, su registro también. La IP y el user agent salen de la petición HTTP actual, si existe.
+ * revierte, su registro también. La IP, el user agent y el endpoint salen de la petición HTTP actual, si existe.
  */
 @Service
 public class AuditService {
@@ -78,7 +78,7 @@ public class AuditService {
     public void record(UUID actorId, String action, String entityType, UUID entityId, Object oldValues,
             Object newValues, AuditSource source, String ipAddress, String userAgent) {
         logs.save(AuditLog.of(actorId, action, entityType, entityId, toMap(oldValues), toMap(newValues), source,
-                validIp(ipAddress), truncate(userAgent)));
+                validIp(ipAddress), truncate(userAgent), currentEndpoint()));
     }
 
     /**
@@ -136,7 +136,7 @@ public class AuditService {
         return PageResponse.of(result, result.getContent().stream().map(log -> new AuditLogResponse(log.getId(),
                 log.getActorId(), log.getActorId() == null ? null : names.get(log.getActorId()), log.getAction(),
                 log.getEntityType(), log.getEntityId(), log.getOldValues(), log.getNewValues(), log.getIpAddress(),
-                log.getUserAgent(), log.getSource(), log.getCreatedAt())).toList());
+                log.getUserAgent(), log.getEndpoint(), log.getSource(), log.getCreatedAt())).toList());
     }
 
     private Map<String, Object> toMap(Object value) {
@@ -150,6 +150,11 @@ public class AuditService {
         return RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes
                 ? attributes.getRequest()
                 : null;
+    }
+
+    private static String currentEndpoint() {
+        HttpServletRequest request = currentRequest();
+        return request == null ? null : request.getRequestURI();
     }
 
     /** Primera IP de X-Forwarded-For (detrás de un proxy) o la dirección remota. */

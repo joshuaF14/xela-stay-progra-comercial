@@ -65,8 +65,9 @@ class AuditServiceTest {
     }
 
     @Test
-    void recordTakesIpAndUserAgentFromTheCurrentRequest() {
+    void recordTakesIpUserAgentAndEndpointFromTheCurrentRequest() {
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/properties");
         request.setRemoteAddr("10.0.0.5");
         request.addHeader("X-Forwarded-For", "200.1.2.3, 10.0.0.5");
         request.addHeader("User-Agent", "Mozilla/5.0");
@@ -79,6 +80,7 @@ class AuditServiceTest {
         AuditLog log = saved.getValue();
         assertThat(log.getIpAddress()).isEqualTo("200.1.2.3");
         assertThat(log.getUserAgent()).isEqualTo("Mozilla/5.0");
+        assertThat(log.getEndpoint()).isEqualTo("/api/v1/properties");
         assertThat(log.getOldValues()).containsEntry("name", "Casa");
         assertThat(log.getNewValues()).containsEntry("status", "PUBLISHED");
         assertThat(log.getSource()).isEqualTo(AuditSource.USER);
@@ -92,7 +94,22 @@ class AuditServiceTest {
         verify(logs).save(saved.capture());
         assertThat(saved.getValue().getIpAddress()).isNull();
         assertThat(saved.getValue().getUserAgent()).isNull();
+        assertThat(saved.getValue().getEndpoint()).isNull();
         assertThat(saved.getValue().getOldValues()).isNull();
+    }
+
+    @Test
+    void explicitIpAndUserAgentStillCaptureTheEndpoint() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/ai/chat");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        service.record(actorId, "AI_CHAT", "ai_interaction", entityId, null, Map.of("question", "hola"),
+                AuditSource.AI, "190.1.2.3", "curl");
+
+        verify(logs).save(saved.capture());
+        assertThat(saved.getValue().getEndpoint()).isEqualTo("/api/v1/ai/chat");
+        assertThat(saved.getValue().getIpAddress()).isEqualTo("190.1.2.3");
     }
 
     @Test

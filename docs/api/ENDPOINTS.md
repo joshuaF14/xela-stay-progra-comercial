@@ -310,8 +310,9 @@ Respuesta (Payment):
 |---|---|---|---|
 | GET | `/audit-logs?entityType=&entityId=&actorId=&source=&from=&to=&page=&size=` | ADMIN | `200` página, más recientes primero |
 
-Registro: `{id, actorId, actorName, action, entityType, entityId, oldValues, newValues, ipAddress, userAgent, source,
-createdAt}`. `source`: `USER`, `ADMIN`, `AI` o `SYSTEM`. Qué operaciones se registran y con qué valores:
+Registro: `{id, actorId, actorName, action, entityType, entityId, oldValues, newValues, ipAddress, userAgent, endpoint,
+source, createdAt}`. `endpoint` es la URI de la petición que originó el registro. `source`: `USER`, `ADMIN`, `AI` o
+`SYSTEM`. Qué operaciones se registran y con qué valores:
 [AUDITORIA.md](../architecture/AUDITORIA.md).
 
 ---
