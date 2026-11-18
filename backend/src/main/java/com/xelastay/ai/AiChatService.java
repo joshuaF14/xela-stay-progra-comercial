@@ -2,7 +2,9 @@ package com.xelastay.ai;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import com.xelastay.ai.KnowledgeSearch.ChunkHit;
 import com.xelastay.ai.KnowledgeSearch.PropertyHit;
@@ -45,7 +47,23 @@ public class AiChatService {
         this.properties = properties;
     }
 
+    /** Respuesta completa de una sola vez (POST /ai/chat). */
     public ChatResponse chat(UUID userId, String question, String ipAddress, String userAgent) {
+        return respond(userId, question, ipAddress, userAgent, null);
+    }
+
+    /**
+     * Igual que {@link #chat}, pero entrega el texto a {@code onToken} por partes mientras el modelo lo genera
+     * (POST /ai/chat/stream). Devuelve la respuesta completa, ya registrada, con sus fuentes.
+     */
+    public ChatResponse chatStream(UUID userId, String question, String ipAddress, String userAgent,
+            Consumer<String> onToken) {
+        return respond(userId, question, ipAddress, userAgent, Objects.requireNonNull(onToken));
+    }
+
+    /** Búsqueda, prompt, llamada al modelo y registro, comunes a los dos modos. onToken null = sin streaming. */
+    private ChatResponse respond(UUID userId, String question, String ipAddress, String userAgent,
+            Consumer<String> onToken) {
         String cleanQuestion = question.strip();
         List<ChunkHit> chunks = search.searchChunks(cleanQuestion, properties.maxChunks());
         List<PropertyHit> stays = search.searchProperties(cleanQuestion, properties.maxProperties());
@@ -69,9 +87,18 @@ public class AiChatService {
                     .append(summary).append("\n\n");
         }
 
-        String answer = sources.isEmpty()
-                ? NO_SOURCES_ANSWER
-                : aiClient.generate(SYSTEM_INSTRUCTION, "FUENTES:\n" + context + "PREGUNTA:\n" + cleanQuestion);
+        String answer;
+        if (sources.isEmpty()) {
+            answer = NO_SOURCES_ANSWER;
+            if (onToken != null) {
+                onToken.accept(answer);
+            }
+        } else {
+            String prompt = "FUENTES:\n" + context + "PREGUNTA:\n" + cleanQuestion;
+            answer = onToken == null
+                    ? aiClient.generate(SYSTEM_INSTRUCTION, prompt)
+                    : aiClient.generateStream(SYSTEM_INSTRUCTION, prompt, onToken);
+        }
 
         UUID interactionId = logWriter.recordChat(userId, cleanQuestion, answer, sources, ipAddress, userAgent);
         return new ChatResponse(interactionId, answer, List.copyOf(sources));

@@ -461,6 +461,7 @@ contador de no leídas. Tipos actuales (los crea el consumidor de RabbitMQ): `BO
 | POST | `/ai/documents` (JSON) | ADMIN | `201` |
 | POST | `/ai/documents` (multipart) | ADMIN | `201` |
 | POST | `/ai/chat` | autenticado | `200` |
+| POST | `/ai/chat/stream` | autenticado | `200` (`text/event-stream`) |
 
 ### Ingesta
 
@@ -500,6 +501,46 @@ Cuerpo `{"question": "¿Hasta cuándo puedo cancelar sin costo?"}` (máx. 1000).
 | `503` | falta `AI_API_KEY` o se alcanzó el límite de uso de Gemini |
 | `502` | Gemini respondió con error o el modelo configurado no existe |
 | `504` | Gemini no respondió en 30 s |
+
+### Chat con streaming
+
+`POST /ai/chat/stream` recibe el mismo cuerpo que `/ai/chat`, hace la misma búsqueda, usa el mismo prompt y registra la
+interacción igual, pero devuelve la respuesta por partes como **Server-Sent Events** mientras Gemini la escribe
+(`streamGenerateContent?alt=sse`). Eventos:
+
+| Evento | `data` (JSON) | Cuándo |
+|---|---|---|
+| `token` | `{"text": "…"}` | cada pedazo de texto, en orden; unidos forman la respuesta |
+| `done` | la misma respuesta de `/ai/chat`: `{interactionId, answer, sources}` | al final; cierra el flujo |
+| `error` | `{"status": 503, "message": "…"}` | si Gemini falla (mismos códigos que `/ai/chat`); cierra el flujo |
+
+```text
+event:token
+data:{"text":"Puedes cancelar sin costo "}
+
+event:token
+data:{"text":"hasta 48 horas antes del check-in [1]."}
+
+event:done
+data:{"interactionId":"…","answer":"Puedes cancelar sin costo hasta 48 horas antes del check-in [1].","sources":[…]}
+```
+
+- Sin token responde `401` y con una pregunta vacía o de más de 1000 caracteres, `400`, como JSON normal (antes de abrir
+  el flujo). Los errores de Gemini llegan como evento `error`, porque el `200` ya se envió.
+- Si no hay fuentes, llega un solo `token` con la respuesta fija, sin llamar al modelo.
+- Una respuesta que se corta por un error no se registra en `ai_interactions`.
+- El flujo dura como máximo 120 s. Si el cliente se desconecta, se deja de leer a Gemini.
+
+```powershell
+# PowerShell 5.1: el cuerpo va en un archivo UTF-8 sin BOM (los argumentos de curl.exe no viajan en UTF-8 y un JSON
+# con espacios se parte en varios argumentos).
+[IO.File]::WriteAllText("$PWD\pregunta.json", '{"question":"¿Hasta cuándo puedo cancelar sin costo?"}',
+  (New-Object Text.UTF8Encoding $false))
+curl.exe -N -X POST http://localhost:8080/api/v1/ai/chat/stream `
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data-binary "@pregunta.json"
+```
+
+`-N` desactiva el búfer de curl para ver los eventos a medida que llegan.
 
 Documentos de ejemplo y comandos para cargarlos: [docs/ai/README.md](../ai/README.md).
 

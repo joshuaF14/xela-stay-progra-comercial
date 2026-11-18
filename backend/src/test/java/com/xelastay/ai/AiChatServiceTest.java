@@ -5,14 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import com.xelastay.ai.KnowledgeSearch.ChunkHit;
 import com.xelastay.ai.KnowledgeSearch.PropertyHit;
@@ -110,6 +113,53 @@ class AiChatServiceTest {
         assertThatThrownBy(() -> service.chat(userId, QUESTION, "127.0.0.1", null))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(logWriter);
+    }
+
+    @Test
+    void chatStreamDeliversTokensAndLogsTheFullAnswer() {
+        when(search.searchChunks(QUESTION, 5)).thenReturn(List.of(chunk()));
+        when(aiClient.generateStream(eq(AiChatService.SYSTEM_INSTRUCTION), any(), any())).thenAnswer(call -> {
+            Consumer<String> onToken = call.getArgument(2);
+            onToken.accept("Hasta 48 horas ");
+            onToken.accept("antes [1].");
+            return "Hasta 48 horas antes [1].";
+        });
+        UUID interactionId = UUID.randomUUID();
+        when(logWriter.recordChat(eq(userId), eq(QUESTION), eq("Hasta 48 horas antes [1]."), any(),
+                eq("127.0.0.1"), eq("curl"))).thenReturn(interactionId);
+
+        List<String> tokens = new ArrayList<>();
+        ChatResponse response = service.chatStream(userId, QUESTION, "127.0.0.1", "curl", tokens::add);
+
+        assertThat(tokens).containsExactly("Hasta 48 horas ", "antes [1].");
+        assertThat(response.interactionId()).isEqualTo(interactionId);
+        assertThat(response.answer()).isEqualTo("Hasta 48 horas antes [1].");
+        assertThat(response.sources()).singleElement()
+                .satisfies(source -> assertThat(source.documentId()).isEqualTo(documentId));
+        verify(aiClient, never()).generate(any(), any());
+    }
+
+    @Test
+    void chatStreamWithoutSourcesSendsTheFixedAnswerAsOneToken() {
+        when(logWriter.recordChat(any(), any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
+
+        List<String> tokens = new ArrayList<>();
+        ChatResponse response = service.chatStream(userId, "¿Qué clima hace en Marte?", "127.0.0.1", null,
+                tokens::add);
+
+        assertThat(tokens).containsExactly(AiChatService.NO_SOURCES_ANSWER);
+        assertThat(response.answer()).isEqualTo(AiChatService.NO_SOURCES_ANSWER);
+        verifyNoInteractions(aiClient);
+    }
+
+    @Test
+    void chatDoesNotUseStreaming() {
+        when(search.searchChunks(any(), anyInt())).thenReturn(List.of(chunk()));
+        when(aiClient.generate(any(), any())).thenReturn("Respuesta [1].");
+
+        service.chat(userId, QUESTION, "127.0.0.1", null);
+
+        verify(aiClient, never()).generateStream(any(), any(), any());
     }
 
     private ChunkHit chunk() {
