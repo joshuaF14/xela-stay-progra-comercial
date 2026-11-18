@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -20,16 +21,19 @@ import java.util.UUID;
 import com.xelastay.common.PageResponse;
 import com.xelastay.review.dto.ReviewRequest;
 import com.xelastay.review.dto.ReviewResponse;
+import com.xelastay.review.dto.ReviewSummaryResponse;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -56,6 +60,35 @@ class ReviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].rating").value(5))
                 .andExpect(jsonPath("$.content[0].reviewerName").value("Ana López"));
+    }
+
+    @Test
+    void reviewSummaryIsPublic() throws Exception {
+        when(reviewService.summaryForProperty(propertyId))
+                .thenReturn(new ReviewSummaryResponse(propertyId, 3, new BigDecimal("4.67")));
+
+        mockMvc.perform(get("/api/v1/properties/{id}/reviews/summary", propertyId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.propertyId").value(propertyId.toString()))
+                .andExpect(jsonPath("$.reviewCount").value(3))
+                .andExpect(jsonPath("$.averageRating").value(4.67));
+    }
+
+    @Test
+    void reviewSummaryOfUnknownPropertyIs404() throws Exception {
+        when(reviewService.summaryForProperty(propertyId))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Alojamiento no encontrado"));
+
+        mockMvc.perform(get("/api/v1/properties/{id}/reviews/summary", propertyId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Alojamiento no encontrado"));
+    }
+
+    @Test
+    void reviewSummaryWithAnInvalidIdIs400() throws Exception {
+        mockMvc.perform(get("/api/v1/properties/{id}/reviews/summary", "no-es-un-uuid"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(reviewService);
     }
 
     @Test

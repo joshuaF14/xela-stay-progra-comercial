@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import com.xelastay.common.PageResponse;
 import com.xelastay.review.dto.ReviewRequest;
 import com.xelastay.review.dto.ReviewResponse;
+import com.xelastay.review.dto.ReviewSummaryResponse;
 import com.xelastay.security.CurrentUser;
 
 import org.springframework.http.HttpStatus;
@@ -45,6 +46,12 @@ public class ReviewController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return reviewService.listForProperty(propertyId, page, size);
+    }
+
+    /** Público (sin token): cantidad de reseñas y calificación promedio de un alojamiento publicado. */
+    @GetMapping("/properties/{propertyId}/reviews/summary")
+    public ReviewSummaryResponse summaryForProperty(@PathVariable UUID propertyId) {
+        return reviewService.summaryForProperty(propertyId);
     }
 
     @PutMapping("/reviews/{id}")

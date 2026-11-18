@@ -1,5 +1,7 @@
 package com.xelastay.review;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,6 +16,7 @@ import com.xelastay.common.PageResponse;
 import com.xelastay.common.ProfileNameReader;
 import com.xelastay.review.dto.ReviewRequest;
 import com.xelastay.review.dto.ReviewResponse;
+import com.xelastay.review.dto.ReviewSummaryResponse;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -79,6 +82,22 @@ public class ReviewService {
                 .map(review -> ReviewResponse.from(review, names.get(review.getReviewerId())))
                 .toList();
         return PageResponse.of(result, content);
+    }
+
+    /**
+     * Público: cantidad de reseñas y calificación promedio de un alojamiento publicado. Misma regla de visibilidad
+     * que {@link #listForProperty}: si el alojamiento no está publicado, 404.
+     */
+    @Transactional(readOnly = true)
+    public ReviewSummaryResponse summaryForProperty(UUID propertyId) {
+        properties.findPublished(propertyId)
+                .orElseThrow(() -> error(HttpStatus.NOT_FOUND, "Alojamiento no encontrado"));
+        ReviewRepository.RatingTotals totals = reviews.totalsByPropertyId(propertyId);
+        long count = totals == null || totals.getReviewCount() == null ? 0 : totals.getReviewCount();
+        BigDecimal average = count == 0 || totals.getRatingSum() == null
+                ? null
+                : BigDecimal.valueOf(totals.getRatingSum()).divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP);
+        return new ReviewSummaryResponse(propertyId, count, average);
     }
 
     @Transactional
