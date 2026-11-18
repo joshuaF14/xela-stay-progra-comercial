@@ -412,6 +412,7 @@ intervalo es `[startDate, endDate)`. Responde `409` si cubre reservas activas o 
 |---|---|---|---|
 | POST | `/bookings/{bookingId}/review` | huésped de la reserva | `201` |
 | GET | `/properties/{id}/reviews?page=&size=` | **público** | `200` página, más recientes primero |
+| GET | `/properties/{id}/reviews/summary` | **público** | `200` cantidad y promedio |
 | PUT | `/reviews/{id}` | autor | `200` |
 | DELETE | `/reviews/{id}` | autor | `204` |
 
@@ -419,6 +420,23 @@ Cuerpo: `{"rating": 5, "comment": "Excelente vista"}` (`rating` de 1 a 5, `comme
 Solo para reservas `COMPLETED`, una por reserva (`409` si no está completada o ya tiene reseña). `property_id` se
 toma de la reserva. Respuesta: `{id, bookingId, propertyId, reviewerId, reviewerName, rating, comment, createdAt,
 updatedAt}`.
+
+### Resumen de reseñas
+
+`GET /properties/{id}/reviews/summary` (sin token) devuelve la cantidad de reseñas y la calificación promedio de un
+alojamiento, sin traer las reseñas:
+
+```json
+{"propertyId": "…", "reviewCount": 3, "averageRating": 4.67}
+```
+
+- Misma visibilidad que el listado: solo alojamientos `PUBLISHED` y no borrados; si no, `404` "Alojamiento no
+  encontrado". Un `id` que no es UUID responde `400`.
+- `averageRating` va de 1 a 5 con 2 decimales (redondeo hacia arriba desde 0.5), igual que la vista
+  `reporting_property_ratings` y que `averageRating` en `GET /properties/{id}`. Sin reseñas: `reviewCount = 0` y
+  `averageRating = null`.
+- Se calcula con una sola consulta (`COUNT` y `SUM` en `ReviewRepository.totalsByPropertyId`), sin cambios en el
+  esquema.
 
 ---
 

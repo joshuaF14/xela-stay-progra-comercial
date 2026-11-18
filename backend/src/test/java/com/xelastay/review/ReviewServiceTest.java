@@ -15,10 +15,12 @@ import java.util.UUID;
 
 import com.xelastay.booking.Booking;
 import com.xelastay.booking.BookingRepository;
+import com.xelastay.booking.PropertyInfo;
 import com.xelastay.booking.PropertyReader;
 import com.xelastay.common.ProfileNameReader;
 import com.xelastay.review.dto.ReviewRequest;
 import com.xelastay.review.dto.ReviewResponse;
+import com.xelastay.review.dto.ReviewSummaryResponse;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
@@ -133,6 +135,57 @@ class ReviewServiceTest {
         when(properties.findPublished(propertyId)).thenReturn(Optional.empty());
 
         assertStatus(() -> service.listForProperty(propertyId, 0, 20), HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void summaryCountsReviewsAndRoundsTheAverageToTwoDecimals() {
+        when(properties.findPublished(propertyId)).thenReturn(Optional.of(publishedProperty()));
+        when(reviews.totalsByPropertyId(propertyId)).thenReturn(totals(3L, 14L));
+
+        ReviewSummaryResponse summary = service.summaryForProperty(propertyId);
+
+        assertThat(summary.propertyId()).isEqualTo(propertyId);
+        assertThat(summary.reviewCount()).isEqualTo(3);
+        assertThat(summary.averageRating()).isEqualByComparingTo("4.67");
+        assertThat(summary.averageRating().scale()).isEqualTo(2);
+    }
+
+    @Test
+    void summaryWithoutReviewsHasZeroCountAndNoAverage() {
+        when(properties.findPublished(propertyId)).thenReturn(Optional.of(publishedProperty()));
+        when(reviews.totalsByPropertyId(propertyId)).thenReturn(totals(0L, null));
+
+        ReviewSummaryResponse summary = service.summaryForProperty(propertyId);
+
+        assertThat(summary.reviewCount()).isZero();
+        assertThat(summary.averageRating()).isNull();
+    }
+
+    @Test
+    void summaryOfUnpublishedPropertyIsNotFound() {
+        when(properties.findPublished(propertyId)).thenReturn(Optional.empty());
+
+        assertStatus(() -> service.summaryForProperty(propertyId), HttpStatus.NOT_FOUND);
+        verify(reviews, never()).totalsByPropertyId(any());
+    }
+
+    private PropertyInfo publishedProperty() {
+        return new PropertyInfo(propertyId, UUID.randomUUID(), "Casa en Xela", new BigDecimal("350.00"), "GTQ", 4,
+                "PUBLISHED");
+    }
+
+    private static ReviewRepository.RatingTotals totals(Long count, Long sum) {
+        return new ReviewRepository.RatingTotals() {
+            @Override
+            public Long getReviewCount() {
+                return count;
+            }
+
+            @Override
+            public Long getRatingSum() {
+                return sum;
+            }
+        };
     }
 
     private Booking booking() {

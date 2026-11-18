@@ -45,7 +45,7 @@ public class SecurityConfig {
                         .permitAll()
                         // Calendario y reseñas públicas de un alojamiento (módulos de reservas y reseñas).
                         .requestMatchers(HttpMethod.GET, "/api/v1/properties/*/availability",
-                                "/api/v1/properties/*/reviews").permitAll()
+                                "/api/v1/properties/*/reviews", "/api/v1/properties/*/reviews/summary").permitAll()
                         // Catálogo y búsqueda de alojamientos (el servicio decide qué es visible).
                         // "/api/v1/properties/*" solo cubre /properties/{id}; /me/properties sigue protegida.
                         .requestMatchers(HttpMethod.GET,
